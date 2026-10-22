@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name            TELAS Custom (Teikyo LMS Assistant)
 // @namespace       TELAS-Custom
-// @version         1.4.0-custom
-// @description     Ultra 左侧导航三件套：批量下载、答题、自动登录设置。支持 Tampermonkey / Violentmonkey 和 iOS / macOS Safari 的 Userscripts。
-// @description:zh-CN Ultra 左侧导航三件套：批量下载、答题、自动登录设置。支持 Tampermonkey / Violentmonkey 和 iOS / macOS Safari 的 Userscripts。
-// @description:ja  Ultra の左メニューに一括ダウンロード、問題演習、自動ログイン設定を追加します。
-// @description:en  Adds bulk download, quiz helper, and auto-login settings to the Ultra navigation.
+// @version         1.6.7-custom
+// @description     Ultra 左侧导航：试题/作业、答题、批量下载、自动登录设置。支持简繁中文、日本语和 English。
+// @description:zh-CN Ultra 左侧导航：试题/作业、答题、批量下载、自动登录设置。支持简繁中文、日本语和 English。
+// @description:zh-TW Ultra 左側導覽：試題/作業、答題、批次下載、自動登入設定。支援繁簡中文、日本語和 English。
+// @description:ja  Ultra の左メニューにテスト・課題、問題演習、一括ダウンロード、自動ログイン設定を追加します。
+// @description:en  Adds tests/assignments, quiz helper, bulk download, and auto-login settings to Ultra.
 // @author          NEMUI1218
 // @match           https://lms2017.teikyo-u.ac.jp/*
 // @match           https://vlib.ita.teikyo-u.ac.jp/Mediasite/*
@@ -89,6 +90,9 @@
   // 答题面板
   const QZ_NAV_ID = "bbqz-nav";
   const QZ_PANEL_ID = "bbqz-panel";
+  const TS_NAV_ID = "bbts-nav";
+  const TS_PANEL_ID = "bbts-panel";
+  const LS_TS_ARCHIVE = "bbts.archive.v1";
   const LS_QZ_THEME = "bbqz.theme";
   const LS_QZ_AIURL = "bbqz.aiurl";
   // iPadOS 默认报桌面 UA（MacIntel），靠触点数区分
@@ -523,6 +527,27 @@
       al_sec_account: "账号", al_sec_behavior: "行为",
     },
   };
+  // 繁體中文是獨立語言選項。既有簡體使用者仍保留 zh，舊設定不會被改寫。
+  const TRAD_CHARS = {
+    "简":"簡","体":"體","课":"課","程":"程","资":"資","料":"料","题":"題","试":"試","业":"業","页":"頁","签":"籤","载":"載","选":"選","择":"擇","显":"顯","示":"示","账":"帳","号":"號","码":"碼","启":"啟","填":"填","写":"寫","清":"清","览":"覽","网":"網","络":"絡","错":"錯","误":"誤","获":"獲","链":"鏈","接":"接","复":"複","制":"製","开":"開","关":"關","发":"發","现":"現","图":"圖","张":"張","问":"問","答":"答","测":"測","验":"驗","尝":"嘗","续":"續","进":"進","行":"行","达":"達","限":"限","认":"認","确":"確","览":"覽","浏":"瀏","览":"覽","储":"儲","存":"存","个":"個","门":"門","另":"另","义":"義","频":"頻","仅":"僅","权":"權","将":"將","应":"應","该":"該","这":"這","与":"與","为":"為","结":"結","果":"果","对":"對","照":"照","编":"編","号":"號","粘":"貼","贴":"貼","项":"項","条":"條","后":"後","里":"裡","单":"單","击":"擊","归":"歸","档":"檔","历":"歷","录":"錄","读":"讀","取":"取","败":"敗","详":"詳","细":"細","态":"態","总":"總","数":"數","间":"間","时":"時","无":"無","从":"從","属":"屬","称":"稱","类":"類","别":"別","满":"滿","过":"過","滤":"濾","务":"務","动":"動","护":"護","统":"統","拟":"擬","际":"際","标":"標","点":"點","击":"擊","换":"換","独":"獨","立":"立","并":"並","扩":"擴","缩":"縮","顶":"頂","级":"級","边":"邊","导":"導","击":"擊","询":"詢","暂":"暫","栏":"欄","转":"轉","写":"寫","检":"檢","视":"視","创":"創","组":"組","钟":"鐘","毕":"畢","递":"遞","弹":"彈","窗":"窗","笔":"筆","记":"記","处":"處","规":"規","范":"範","顺":"順","序":"序","类":"類","别":"別","输":"輸","入":"入","护":"護","扫":"掃","描":"描","讲":"講","视":"視","则":"則","务":"務","导":"導","汇":"彙","县":"縣","云":"雲","万":"萬","东京":"東京"
+  };
+  const toTraditional = (value) => String(value).replace(/./g, (ch) => TRAD_CHARS[ch] || ch);
+  T.zh_tw = Object.fromEntries(Object.entries(T.zh).map(([key, value]) => [key, toTraditional(value)]));
+  const TS_TEXT = {
+    ja:{ts_nav:"テスト・課題",ts_title:"テスト・課題",ts_sub:"管理",ts_completed:"完了履歴",ts_archived:"アーカイブ済み",ts_unfinished:"未完了",ts_archive:"アーカイブへ",ts_unarchive:"アーカイブから戻す",ts_refresh:"更新",ts_loading:"選択した学期の全コースを読み込み中…",ts_failed:"このコースのテストを読み込めませんでした",ts_empty:"このコースには対象のテストがありません",ts_name:"名称",ts_due:"提出期限",ts_attempts:"回答回数",ts_points:"点数",ts_type:"種類",ts_detail:"詳細",ts_course:"コース",ts_status:"状態",ts_url:"Blackboard で開く",ts_close:"閉じる",ts_test:"テスト"},
+    en:{ts_nav:"Tests / Assignments",ts_title:"Tests / Assignments",ts_sub:"Manager",ts_completed:"Completion History",ts_archived:"Archived",ts_unfinished:"Unfinished",ts_archive:"Move to Archive",ts_unarchive:"Remove from Archive",ts_refresh:"Refresh",ts_loading:"Loading every course in this term…",ts_failed:"Could not load tests for this course",ts_empty:"No matching tests in this course",ts_name:"Name",ts_due:"Due date",ts_attempts:"Attempts",ts_points:"Points",ts_type:"Type",ts_detail:"Details",ts_course:"Course",ts_status:"Status",ts_url:"Open in Blackboard",ts_close:"Close",ts_test:"Test"},
+    zh:{ts_nav:"试题/作业",ts_title:"试题/作业",ts_sub:"管理",ts_completed:"完成历史",ts_archived:"已归档",ts_unfinished:"未完成",ts_archive:"移至归档",ts_unarchive:"移出归档",ts_refresh:"刷新",ts_loading:"正在读取所选学期的全部课程…",ts_failed:"此课程试题读取失败",ts_empty:"此课程暂未发现对应试题",ts_name:"名称",ts_due:"截止日期",ts_attempts:"答题次数",ts_points:"点数",ts_type:"类型",ts_detail:"详细信息",ts_course:"课程",ts_status:"状态",ts_url:"在 Blackboard 打开",ts_close:"关闭",ts_test:"试题"},
+    zh_tw:{ts_nav:"試題/作業",ts_title:"試題/作業",ts_sub:"管理",ts_completed:"完成歷史",ts_archived:"已封存",ts_unfinished:"未完成",ts_archive:"移至封存",ts_unarchive:"移出封存",ts_refresh:"重新整理",ts_loading:"正在讀取所選學期的全部課程…",ts_failed:"此課程試題讀取失敗",ts_empty:"此課程暫未發現對應試題",ts_name:"名稱",ts_due:"截止日期",ts_attempts:"作答次數",ts_points:"分數",ts_type:"類型",ts_detail:"詳細資訊",ts_course:"課程",ts_status:"狀態",ts_url:"在 Blackboard 開啟",ts_close:"關閉",ts_test:"試題"}
+  };
+  for (const [locale, values] of Object.entries(TS_TEXT)) Object.assign(T[locale], values);
+  T.ja.ts_manage = "未完了の課題";
+  T.en.ts_manage = "Unfinished tasks";
+  T.zh.ts_manage = "未完成课题";
+  T.zh_tw.ts_manage = "未完成課題";
+  T.ja.ts_found = "テスト・課題 {0} 件";
+  T.en.ts_found = "{0} tests / assignments";
+  T.zh.ts_found = "共找到 {0} 个试题/作业";
+  T.zh_tw.ts_found = "共找到 {0} 個試題/作業";
   let lang = "ja";
 
   // ---------------------------------------------------------------- 工具
@@ -537,7 +562,7 @@
     get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
   };
-  lang = store.get(LS_LANG, "ja"); // 默认日语
+  lang = store.get(LS_LANG, "ja"); // 默认日语；旧版 zh 继续代表简体中文
   if (!T[lang]) lang = "ja";
   // 语言是全局的：下载面板、答题面板和自动登录设置共用一个 bbdl.lang，任一处切换都广播给所有已打开的界面
   const langHooks = new Set();
@@ -646,16 +671,16 @@
 
       if (has("resource/x-bb-file")) {
         const file = (detail["resource/x-bb-file"] || {}).file || {};
-        if (file.fileName) nodes.push({ type: "file", name: file.fileName, url: (file.permanentUrl || "").replace(ORIGIN, ""), folder: folderPath });
+        if (file.fileName) nodes.push({ type: "file", name: file.fileName, url: (file.permanentUrl || "").replace(ORIGIN, ""), folder: folderPath, modified: item.modified || item.created || "" });
       } else if (has("resource/x-bb-folder")) {
         log(`📁 ${folderPath}${title}`);
         const children = await scanTree(cid, item.id, folderPath + sanitize(title) + " / ", log);
-        if (children.length) nodes.push({ type: "folder", name: title, children });
+        if (children.length) nodes.push({ type: "folder", name: title, children, modified: item.modified || item.created || "" });
       } else if (has("resource/x-bb-document")) {
-        for (const f of extractFiles((item.body || {}).rawText || "")) nodes.push({ ...f, folder: folderPath });
+        for (const f of extractFiles((item.body || {}).rawText || "")) nodes.push({ ...f, folder: folderPath, modified: item.modified || item.created || "" });
       } else if (has("resource/x-bb-asmt-test-link")) {
         const asmt = (((detail["resource/x-bb-asmt-test-link"] || {}).test || {}).assessment || {});
-        for (const f of extractFiles((asmt.instructions || {}).rawText || "")) nodes.push({ ...f, folder: folderPath });
+        for (const f of extractFiles((asmt.instructions || {}).rawText || "")) nodes.push({ ...f, folder: folderPath, modified: item.modified || item.created || "" });
       } else if (has("resource/x-bb-blti-link")) {
         const blti = detail["resource/x-bb-blti-link"] || {};
         if (isMediasiteVideo(blti, item)) {
@@ -993,6 +1018,7 @@
     ${P} ul.tree .item > label > span{overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2;
       line-clamp:2; white-space:normal; overflow-wrap:anywhere}
     ${P} ul.tree .dir > label{font-weight:700}
+    ${P} .bbdl-fold{flex:0 0 22px; width:22px; height:28px; padding:0; border:0; background:transparent; color:var(--muted); font:700 16px/1 var(--font); cursor:pointer}
     ${P} ul.tree .vid{padding-left:28px}
     ${P} .bbdl-open, ${P} .bbdl-manual{flex:0 0 auto; text-decoration:none; padding:4px 6px; font-size:14px}
     ${P} .bbdl-open{opacity:.5; display:inline-flex; color:var(--fg)}
@@ -1045,7 +1071,7 @@
         </div>
         <div class="bbtool-headtools">
           <select class="bbtool-lang">
-            <option value="ja">日本語</option><option value="en">English</option><option value="zh">中文</option>
+            <option value="ja">日本語</option><option value="en">English</option><option value="zh">简体中文</option><option value="zh_tw">繁體中文</option>
           </select>
           <select class="bbtool-theme"><option value="light"></option><option value="dark"></option></select>
         </div>
@@ -1126,7 +1152,7 @@
         <section class="sec">
           <h2 id="bbdl-h-files"></h2>
           <div class="tree-head">
-            <label><input type="checkbox" id="bbdl-all" checked><span id="bbdl-all-label"></span></label>
+            <label><input type="checkbox" id="bbdl-all"><span id="bbdl-all-label"></span></label>
             <label><input type="checkbox" id="bbdl-zip"><span id="bbdl-zip-label"></span></label>
           </div>
           <ul class="tree" id="bbdl-list"></ul>
@@ -1227,8 +1253,9 @@
         const li = document.createElement("li");
         if (node.type === "folder") {
           li.className = "dir";
-          li.innerHTML = `<div class="item"><label><input type="checkbox" class="bbdl-dir" checked><span>📁 ${esc(node.name)}</span></label></div>`;
+          li.innerHTML = `<div class="item"><button class="bbdl-fold" type="button" aria-expanded="false">▸</button><label><input type="checkbox" class="bbdl-dir"><span>📁 ${esc(node.name)}</span></label></div>`;
           const ul = document.createElement("ul");
+          ul.hidden = true;
           renderNodes(node.children, ul);
           li.appendChild(ul);
         } else if (node.type === "video") {
@@ -1236,7 +1263,7 @@
         } else {
           const i = dlFiles.length;
           dlFiles.push(node);
-          li.innerHTML = `<div class="item"><label><input type="checkbox" class="bbdl-f" data-i="${i}" checked><span>${esc(node.name)}</span></label>` +
+          li.innerHTML = `<div class="item"><label><input type="checkbox" class="bbdl-f" data-i="${i}"><span>${esc(node.name)}</span></label>` +
             `<a class="bbdl-open" href="${esc(absUrl(node.url))}" target="_blank" rel="noopener" aria-label="${esc(t("open_tab"))}" title="${esc(t("open_tab"))}">${OPEN_SVG}</a></div>`;
         }
         container.appendChild(li);
@@ -1258,6 +1285,14 @@
       }
       refreshDirStates();
       syncSelectAll();
+    });
+    listRoot.addEventListener("click", (e) => {
+      const button = e.target.closest(".bbdl-fold");
+      if (!button) return;
+      const ul = button.closest("li").querySelector(":scope > ul");
+      ul.hidden = !ul.hidden;
+      button.textContent = ul.hidden ? "▸" : "▾";
+      button.setAttribute("aria-expanded", String(!ul.hidden));
     });
 
     // 文件旁的打开图标：右键弹出「复制链接」。菜单挂在面板里（面板是 position:fixed，按面板坐标定位）
@@ -1492,6 +1527,10 @@
   }
   function ensureQuizNavItem() {
     cloneNavItem(QZ_NAV_ID, QZ_ICON, t("qnav"), toggleQuizPanel);
+  }
+  const TS_ICON = '<svg viewBox="0 0 16 16" width="16" height="16" focusable="false" aria-hidden="true"><path fill="currentColor" d="M3 1h8l2 2v12H3V1zm2 3v1h6V4H5zm0 3v1h6V7H5zm0 3v1h4v-1H5z"/></svg>';
+  function ensureTaskNavItem() {
+    cloneNavItem(TS_NAV_ID, TS_ICON, t("ts_nav"), toggleTaskPanel);
   }
   // ---------------------------------------------------------------- 讲义视频页（vlib）
   // 脚本也在 Mediasite 播放页运行：此时已是 vlib 同源，直接调 GetPlayerOptions 拿 MP4 直链，
@@ -2092,8 +2131,10 @@
     return items;
   }
   async function getAllAttempts(courseId, columnId) {
-    try {
-      const data = await apiGet(`/learn/api/v1/courses/${courseId}/gradebook/columns/${columnId}/attempts?limit=100`);
+    const path = `/learn/api/v1/courses/${encodeURIComponent(courseId)}/gradebook/columns/${encodeURIComponent(columnId)}/attempts?limit=100`;
+    let data;
+    try { data = await apiGet(path); }
+    catch (gmError) { data = await getJSON(API(path)); }
       const attempts = [];
       if (data && data.lookup) {
         for (const k of Object.keys(data.lookup)) attempts.push(...(data.lookup[k] || []));
@@ -2101,7 +2142,6 @@
         attempts.push(...data.results);
       }
       return attempts;
-    } catch (e) { return []; }
   }
   async function getColumn(courseId, columnId) {
     try { return (await apiGet(`/learn/api/v1/courses/${courseId}/gradebook/columns/${columnId}`)) || {}; }
@@ -2701,7 +2741,8 @@
       modal.hidden = false;
       list.innerHTML = `<p class="desc" style="padding:12px">${esc(t("attach_loading"))}</p>`;
       try {
-        const files = flattenCourseFiles(await scanTree(qzCourseId, "ROOT", "", () => {}));
+        const files = flattenCourseFiles(await scanTree(qzCourseId, "ROOT", "", () => {}))
+          .sort((a, b) => String(b.modified || "").localeCompare(String(a.modified || "")));
         if (seq !== qzMaterialSeq) return;
         list.innerHTML = "";
         for (let index = 0; index < files.length; index++) {
@@ -3125,6 +3166,322 @@
     }, 250);
   }
 
+  // ================================================================ 試題/作業（独立于答题助手）
+  let taskPanel = null;
+  let taskGrouped = [];
+  let taskCourses = [];
+  let taskView = "all";
+  let taskSeq = 0;
+  let taskUserId = "";
+  const taskArchive = () => { try { return new Set(JSON.parse(store.get(LS_TS_ARCHIVE, "[]"))); } catch (e) { return new Set(); } };
+  const saveTaskArchive = (set) => store.set(LS_TS_ARCHIVE, JSON.stringify([...set]));
+  function jstDate(value) {
+    if (value == null || value === "") return "—";
+    let d;
+    if (typeof value === "number") d = new Date(Math.abs(value) >= 1e11 ? value : value * 1000);
+    else d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    const p = new Intl.DateTimeFormat("sv-SE", { timeZone:"Asia/Tokyo", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false }).format(d);
+    return p.replace(" ", " ");
+  }
+  function assessmentItem(item) {
+    const detail = item.contentDetail || {};
+    const handler = typeof item.contentHandler === "string" ? item.contentHandler : ((item.contentHandler || {}).id || "");
+    const hay = `${handler} ${Object.keys(detail).join(" ")}`.toLowerCase();
+    return /asmt|assessment|assignment|test|survey/.test(hay);
+  }
+  async function scanAssessments(courseId, contentId = "ROOT", path = [], seen = new Set()) {
+    if (seen.has(String(contentId))) return [];
+    seen.add(String(contentId));
+    // iOS Userscripts 的 GM 请求不一定携带 Blackboard Cookie；课程内容扫描
+    // 必须沿用下载页已验证可用的当前页面同源会话。
+    const data = await getJSON(API(`/learn/api/v1/courses/${encodeURIComponent(courseId)}/contents/${encodeURIComponent(contentId)}/children?@view=Summary&limit=1000`));
+    const out = [];
+    for (const item of data.results || []) {
+      const detail = item.contentDetail || {};
+      const handlerId = typeof item.contentHandler === "string" ? item.contentHandler : ((item.contentHandler || {}).id || "");
+      const keys = `${handlerId} ${Object.keys(detail).join(" ")}`.toLowerCase();
+      if (assessmentItem(item)) {
+        const generic = item.genericReadOnlyData || {};
+        let gradeColumnId = "";
+        let pointsPossible = null;
+        let attemptsAllowed = null;
+        for (const payload of Object.values(detail)) {
+          const variants = [payload, payload && payload.test, payload && payload.survey, payload && payload.assignment];
+          for (const v of variants) if (v && v.gradingColumn) {
+            if (v.gradingColumn.id) gradeColumnId = String(v.gradingColumn.id);
+            if (v.gradingColumn.possible != null) pointsPossible = v.gradingColumn.possible;
+            if (v.gradingColumn.attemptsAllowed != null) attemptsAllowed = Number(v.gradingColumn.attemptsAllowed);
+            if (v.attemptsAllowed != null) attemptsAllowed = Number(v.attemptsAllowed);
+          }
+        }
+        out.push({ id:String(item.id), title:item.title || t("ts_test"), path:[...path], due:jstDate(generic.dueDate || item.dueDate), gradeColumnId,
+          url:`${LMS}/ultra/courses/${courseId}/assessment/${item.id}/overview?courseId=${courseId}`, attempts:0, allowed:attemptsAllowed, attemptsKnown:false,
+          points:pointsPossible == null ? "—" : `—/${pointsPossible}`, status:"—", completed:false });
+      } else if (/x-bb-folder/.test(keys)) {
+        out.push(...await scanAssessments(courseId, item.id, [...path, item.title || ""], seen));
+      } else if (/x-bb-document/.test(keys)) {
+        out.push(...await scanAssessments(courseId, item.id, path, seen).catch(() => []));
+      }
+    }
+    return out;
+  }
+  function taskNumber(value) {
+    if (value === null || value === undefined || value === "" || typeof value === "boolean") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+  function applyTaskDisplayGrade(quiz, displayGrade) {
+    if (!displayGrade || typeof displayGrade !== "object") return false;
+    const scale = String(displayGrade.scaleType || "");
+    if (scale === "CompleteIncomplete") {
+      const text = String(displayGrade.text || "").trim().toLowerCase();
+      const markedComplete = ["complete","completed","完了","完成","已完成","✓","✔"].includes(text);
+      quiz.completed = quiz.completed || markedComplete;
+      quiz.points = markedComplete ? "✓" : "—";
+      return true;
+    }
+    if (scale === "Text" || scale === "Tabular") { quiz.points = "—"; return true; }
+    if (scale !== "Score" && scale !== "Percent") return false;
+    let possible = taskNumber(displayGrade.possible);
+    if (possible == null) possible = taskNumber(String(quiz.points).replace(/^—\//, ""));
+    let earned = taskNumber(displayGrade.score);
+    if (scale === "Percent" && earned != null && possible != null) earned = earned * possible / 100;
+    if (possible != null) quiz.points = `${earned == null ? "—" : earned}/${possible}`;
+    return earned != null;
+  }
+  function taskAttemptSubmitted(attempt) {
+    if (!attempt || typeof attempt !== "object") return false;
+    if (attempt.submitted === true || attempt.isSubmitted === true || attempt.dateSubmitted || attempt.submittedDate || attempt.submissionDate) return true;
+    const state = String(attempt.status || attempt.attemptStatus || attempt.workflowStatus || attempt.gradingStatus || "")
+      .replace(/[\s_-]/g, "").toLowerCase();
+    if (!state || /notstarted|inprogress|draft|created|started/.test(state)) return false;
+    return /submitted|completed|graded|needsgrading|pendinggrading|pending|awaitinggrading|inreview|review/.test(state);
+  }
+  async function enrichAssessments(courseId, quizzes) {
+    let columns = [];
+    const readJson = async (path) => { try { return await apiGet(path); } catch (e) { return await getJSON(API(path)); } };
+    if (!taskUserId) {
+      try { taskUserId = String((await readJson("/learn/api/v1/users/me")).id || ""); } catch (e) {}
+    }
+    try { columns = (await readJson(`/learn/api/public/v2/courses/${encodeURIComponent(courseId)}/gradebook/columns?limit=1000`)).results || []; } catch (e) {}
+    const byContent = new Map(columns.filter(c => c.contentId).map(c => [String(c.contentId), c]));
+    const byId = new Map(columns.filter(c => c.id).map(c => [String(c.id), c]));
+    for (const quiz of quizzes) {
+      let col = byId.get(quiz.gradeColumnId) || byContent.get(quiz.id) || (quiz.gradeColumnId ? { id:quiz.gradeColumnId, grading:{} } : null);
+      if (!col) continue;
+      quiz.gradeColumnId = String(col.id || quiz.gradeColumnId);
+      try {
+        const legacy = await readJson(`/learn/api/v1/courses/${encodeURIComponent(courseId)}/gradebook/columns/${encodeURIComponent(quiz.gradeColumnId)}`);
+        col = { ...legacy, ...col, grading:{ ...(legacy.grading || {}), ...(col.grading || {}) } };
+      } catch (e) {}
+      const grading = col.grading || {};
+      if (Object.prototype.hasOwnProperty.call(grading, "attemptsAllowed")) quiz.allowed = Number(grading.attemptsAllowed);
+      else if (Object.prototype.hasOwnProperty.call(col, "multipleAttempts")) quiz.allowed = Number(col.multipleAttempts);
+      const possible = col.score && col.score.possible;
+      if (possible != null && possible !== "") quiz.points = `—/${possible}`;
+      try {
+        let attempts = await getAllAttempts(courseId, quiz.gradeColumnId);
+        if (taskUserId) attempts = attempts.filter(a => !a.userId || String(a.userId) === taskUserId);
+        quiz.attemptsKnown = true;
+        quiz.attempts = attempts.length;
+        // 已提交但仍等待教师评分，也属于“已完成”。
+        const completed = attempts.filter(taskAttemptSubmitted);
+        quiz.completed = completed.length > 0;
+        quiz.status = quiz.completed ? t("ts_completed") : t("ts_unfinished");
+        let finalKnown = false;
+        if (taskUserId) try {
+          const grade = await readJson(`/learn/api/public/v2/courses/${encodeURIComponent(courseId)}/gradebook/columns/${encodeURIComponent(quiz.gradeColumnId)}/users/${encodeURIComponent(taskUserId)}`);
+          if (grade && grade.exempt === true) { quiz.completed = true; quiz.points = "—"; finalKnown = true; }
+          else finalKnown = applyTaskDisplayGrade(quiz, grade && grade.displayGrade);
+        } catch (e) {}
+        if (!finalKnown) {
+          const latest = completed[completed.length - 1] || attempts[attempts.length - 1];
+          applyTaskDisplayGrade(quiz, latest && latest.displayGrade);
+        }
+        quiz.status = quiz.completed ? t("ts_completed") : t("ts_unfinished");
+      } catch (e) { quiz.attemptsKnown = false; }
+    }
+    return quizzes;
+  }
+  async function loadTaskCourse(course) {
+    try {
+      const quizzes = await enrichAssessments(course.id, await scanAssessments(course.id));
+      return { ...course, quizzes, failed:false };
+    } catch (error) { return { ...course, quizzes:[], failed:true, error:String(error.message || error) }; }
+  }
+  function taskAttemptText(q) {
+    if (!q.attemptsKnown) return "⚠";
+    if (q.allowed === 0) return `${q.attempts}/∞`;
+    if (Number.isFinite(q.allowed) && q.allowed > 0) return `${q.attempts}/${q.allowed}`;
+    return `${q.attempts}/?`;
+  }
+  function taskKey(course, quiz) { return `${course.id}:${quiz.id}`; }
+  function showTaskDetail(course, quiz) {
+    const modal = taskPanel.querySelector("#bbts-detail");
+    modal.hidden = false;
+    modal.querySelector(".bbts-detail-body").innerHTML = `
+      <h2>${esc(quiz.title)}</h2>
+      <dl><dt>${esc(t("ts_course"))}</dt><dd>${esc(course.short || course.name)}</dd><dt>${esc(t("ts_due"))}</dt><dd>${esc(quiz.due)}</dd>
+      <dt>${esc(t("ts_attempts"))}</dt><dd>${esc(taskAttemptText(quiz))}</dd><dt>${esc(t("ts_points"))}</dt><dd>${esc(quiz.points)}</dd>
+      <dt>${esc(t("ts_status"))}</dt><dd>${esc(quiz.status)}</dd><dt>${esc(t("ts_type"))}</dt><dd>${esc(t("ts_test"))}</dd></dl>
+      <a class="btn line" href="${esc(quiz.url)}" target="_blank" rel="noopener">${esc(t("ts_url"))}</a>`;
+  }
+  function renderTaskCourses() {
+    if (!taskPanel) return;
+    const root = taskPanel.querySelector("#bbts-list");
+    const archived = taskArchive();
+    root.innerHTML = "";
+    for (const course of taskCourses) {
+      const matches = course.quizzes.filter(q => {
+        const a = archived.has(taskKey(course, q));
+        return taskView === "archived" ? a : taskView === "completed" ? q.completed && !a : taskView === "unfinished" ? !q.completed && !a : !a;
+      });
+      const box = document.createElement("details");
+      box.className = "bbts-course";
+      // 未完成或读取失败的课程自动展开；其余课程一律默认收起。
+      const hasUnfinished = course.quizzes.some(q => !q.completed && !archived.has(taskKey(course, q)));
+      box.open = (taskView === "unfinished" && matches.length > 0) || (taskView === "all" && hasUnfinished) || course.failed;
+      box.innerHTML = `<summary>${esc(course.short || course.name)} <span>${matches.length}</span></summary><div class="bbts-items"></div>`;
+      const body = box.querySelector(".bbts-items");
+      if (course.failed) body.innerHTML = `<p class="bbts-message">${esc(t("ts_failed"))}</p>`;
+      else if (!matches.length) body.innerHTML = `<p class="bbts-message">${esc(t("ts_empty"))}</p>`;
+      for (const quiz of matches) {
+        const row = document.createElement("div");
+        const selectable = taskView !== "completed";
+        row.className = `bbts-row${selectable ? "" : " bbts-row-readonly"}`;
+        row.innerHTML = `${selectable ? `<label><input type="checkbox" data-key="${esc(taskKey(course, quiz))}"></label>` : ""}<button class="bbts-name" type="button">${esc(quiz.title)}</button><span>${esc(quiz.due)}</span><span>${esc(taskAttemptText(quiz))}</span><span>${esc(quiz.points)}</span><span>${esc(t("ts_test"))}</span>`;
+        row.querySelector(".bbts-name").onclick = () => showTaskDetail(course, quiz);
+        body.appendChild(row);
+      }
+      root.appendChild(box);
+    }
+    updateTaskManagerControls();
+  }
+  function updateTaskManagerControls() {
+    if (!taskPanel) return;
+    taskPanel.querySelector("#bbts-title").textContent = t(taskView === "archived" ? "ts_archived" : taskView === "completed" ? "ts_completed" : taskView === "unfinished" ? "ts_unfinished" : "ts_title");
+    taskPanel.querySelector("#bbts-history").textContent = t(taskView === "completed" ? "ts_unfinished" : "ts_completed");
+    taskPanel.querySelector("#bbts-toggle").textContent = t(taskView === "archived" ? "ts_unfinished" : "ts_archived");
+    taskPanel.querySelector("#bbts-batch").textContent = t(taskView === "archived" ? "ts_unarchive" : "ts_archive");
+    taskPanel.querySelector("#bbts-batch").hidden = taskView === "completed";
+    taskPanel.querySelector("#bbts-refresh").textContent = t("ts_refresh");
+  }
+  async function refreshTaskPanel() {
+    const seq = ++taskSeq;
+    const term = taskPanel.querySelector("#bbts-manage-term").value;
+    const courses = (taskGrouped.find(([tm]) => tm === term) || [null, []])[1];
+    updateTaskManagerControls();
+    taskPanel.querySelector("#bbts-status").textContent = t("ts_loading");
+    taskCourses = [];
+    taskPanel.querySelector("#bbts-list").innerHTML = "";
+    // 整个学期读取完成后再一次性提交到界面，避免课程逐条跳出和布局抖动。
+    const loadedCourses = [];
+    for (const course of courses) {
+      loadedCourses.push(await loadTaskCourse(course));
+      if (seq !== taskSeq) return;
+    }
+    taskCourses = loadedCourses;
+    renderTaskCourses();
+    taskPanel.querySelector("#bbts-status").textContent = "";
+  }
+  function fillTaskMainCourses() {
+    const term = taskPanel.querySelector("#bbts-main-term").value;
+    const courses = (taskGrouped.find(([tm]) => tm === term) || [null, []])[1];
+    taskPanel.querySelector("#bbts-main-course").innerHTML = `<option value="">${esc(t("pick_course"))}</option>` + courses.map(c => `<option value="${esc(c.id)}">${esc(c.short)}</option>`).join("");
+    taskPanel.querySelector("#bbts-main-list").innerHTML = `<p class="bbts-message">${esc(t("select_quiz_first"))}</p>`;
+  }
+  async function scanTaskMainCourse() {
+    const courseId = taskPanel.querySelector("#bbts-main-course").value;
+    if (!courseId) return;
+    const course = taskGrouped.flatMap(([, courses]) => courses).find(c => c.id === courseId);
+    const root = taskPanel.querySelector("#bbts-main-list");
+    taskPanel.querySelector("#bbts-status").textContent = t("scanning");
+    try {
+      const quizzes = await scanAssessments(courseId);
+      root.innerHTML = "";
+      if (!quizzes.length) root.innerHTML = `<p class="bbts-message">${esc(t("ts_empty"))}</p>`;
+      for (const quiz of quizzes) {
+        const row = document.createElement("div");
+        row.className = "bbts-main-row";
+        row.innerHTML = `<button type="button" class="bbts-name">${esc(quiz.title)}</button>`;
+        row.querySelector("button").onclick = async () => {
+          taskPanel.querySelector("#bbts-status").textContent = t("loading");
+          await enrichAssessments(courseId, [quiz]);
+          showTaskDetail(course, quiz);
+          taskPanel.querySelector("#bbts-status").textContent = "";
+        };
+        root.appendChild(row);
+      }
+      taskPanel.querySelector("#bbts-status").textContent = t("ts_found", quizzes.length);
+    } catch (error) {
+      root.innerHTML = `<p class="bbts-message">${esc(t("ts_failed"))}</p>`;
+      taskPanel.querySelector("#bbts-status").textContent = t("ts_failed");
+    }
+  }
+  function openTaskManager() {
+    taskView = "unfinished";
+    taskPanel.querySelector("#bbts-manage-term").value = taskPanel.querySelector("#bbts-main-term").value;
+    taskPanel.querySelector("#bbts-main").hidden = true;
+    taskPanel.querySelector("#bbts-manage").hidden = false;
+    updateTaskManagerControls();
+    refreshTaskPanel();
+  }
+  function closeTaskManager() {
+    taskSeq++;
+    taskPanel.querySelector("#bbts-manage").hidden = true;
+    taskPanel.querySelector("#bbts-main").hidden = false;
+    taskPanel.querySelector("#bbts-title").textContent = t("ts_title");
+    taskPanel.querySelector("#bbts-status").textContent = "";
+  }
+  function closeTaskPanelToMain() {
+    taskSeq++;
+    taskView = "all";
+    taskPanel.querySelector("#bbts-manage").hidden = true;
+    taskPanel.querySelector("#bbts-main").hidden = false;
+    taskPanel.querySelector("#bbts-title").textContent = t("ts_title");
+    taskPanel.querySelector("#bbts-status").textContent = "";
+    setShellOpen(taskPanel, false);
+  }
+  function buildTaskPanel() {
+    if (taskPanel) return;
+    taskPanel = document.createElement("div"); taskPanel.id = TS_PANEL_ID;
+    mountShell(taskPanel, { sub:{id:"bbts-sub"}, titleId:"bbts-title", closeId:"bbts-x", bodyHtml:`
+      <div id="bbts-main">
+        <section class="sec"><h2 id="bbts-main-heading"></h2><div class="row"><label class="fld"><span id="bbts-main-term-label"></span><select id="bbts-main-term"></select></label></div><div class="bbts-main-course-grid"><label class="fld"><span id="bbts-main-course-label"></span><select id="bbts-main-course"></select></label><button class="btn line" id="bbts-main-scan"></button><button class="btn line" id="bbts-open-manage"></button></div></section>
+        <section class="sec"><h2 id="bbts-main-results"></h2><div class="bbts-main-head"><span>${t("ts_name")}</span></div><div id="bbts-main-list"></div></section>
+      </div>
+      <div id="bbts-manage" hidden>
+        <section class="sec bbts-controls"><div class="row"><label class="fld"><span id="bbts-term-label"></span><select id="bbts-manage-term"></select></label><button class="btn line" id="bbts-back"></button></div><div class="row bbts-action-row"><button class="btn line" id="bbts-toggle"></button><button class="btn line" id="bbts-batch"></button><button class="btn line" id="bbts-refresh"></button><button class="btn line" id="bbts-history"></button></div></section>
+        <div class="bbts-head"><span>${t("ts_name")}</span><span>${t("ts_due")}</span><span>${t("ts_attempts")}</span><span>${t("ts_points")}</span><span>${t("ts_type")}</span></div><div id="bbts-list"></div>
+      </div>
+      <div class="qz-material-modal" id="bbts-detail" hidden><div class="qz-material-card"><div class="bbts-detail-body"></div><div class="qz-material-actions"><button class="btn line" id="bbts-detail-close">${t("ts_close")}</button></div></div></div>`,
+      footerHtml:`<div class="bbtool-status" id="bbts-status"></div><div class="bbtool-actions"><button class="btn sec bbtool-dismiss" data-k="close"></button></div>` });
+    if (!document.getElementById("bbts-style")) document.head.appendChild(el("style", {id:"bbts-style"}, `
+      .bbts-main-head,.bbts-main-row{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-items:center}.bbts-main-head{padding:10px 14px;border:1px solid var(--line);font-weight:700;color:var(--muted)}.bbts-main-row{min-height:46px;padding:6px 14px;border:1px solid var(--line);border-top:0}
+      .bbts-main-course-grid{display:grid;grid-template-columns:minmax(0,1fr) 130px;grid-template-areas:"course scan" ". manage";gap:10px;align-items:end;margin:0 0 18px}.bbts-main-course-grid .fld{grid-area:course;align-self:end}.bbts-main-course-grid #bbts-main-scan{grid-area:scan}.bbts-main-course-grid #bbts-open-manage{grid-area:manage}.bbts-main-course-grid .btn{width:130px}.bbts-action-row{display:flex!important;flex-wrap:nowrap!important;width:100%;gap:6px!important}.bbts-action-row .btn{flex:1 1 0!important;width:0!important;min-width:0!important;padding:0 4px!important;font-size:13px!important}.bbts-action-row #bbts-refresh{flex:.72 1 0!important}.bbts-action-row #bbts-history{flex:1.15 1 0!important}.bbts-action-row #bbts-batch[hidden]{display:none!important}
+      #bbts-panel{max-width:1180px}.bbts-head{display:grid;grid-template-columns:minmax(294px,1fr) 145px 100px 90px 75px;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--line);font-weight:700;color:var(--muted)}.bbts-row{display:grid;grid-template-columns:24px minmax(260px,1fr) 145px 100px 90px 75px;align-items:center;gap:10px;min-height:46px;padding:6px 14px;border-top:1px solid var(--line)}.bbts-row-readonly{grid-template-columns:minmax(294px,1fr) 145px 100px 90px 75px}.bbts-course{border:1px solid var(--line);border-top:0}.bbts-course summary{padding:12px 14px;font-weight:700;cursor:pointer}.bbts-course summary span{float:right;color:var(--muted)}.bbts-row>label{display:flex!important;justify-content:center!important;width:24px}.bbts-row>label input{margin:0!important}.bbts-name{min-width:0;padding:0;border:0;background:none;color:var(--fg);font:600 14px/1.4 var(--font);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.bbts-name:hover{text-decoration:underline}.bbts-message{padding:14px 48px;color:var(--muted)}.bbts-detail-body dl{display:grid;grid-template-columns:120px 1fr;gap:10px;margin:18px 0}.bbts-detail-body dt{font-weight:700}.bbts-detail-body dd{margin:0}#bbts-detail{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.42)}#bbts-detail[hidden]{display:none!important}#bbts-detail>.qz-material-card{width:min(560px,100%);padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--bg);box-shadow:0 18px 55px rgba(0,0,0,.28)}#bbts-detail .qz-material-actions{display:flex;justify-content:flex-end;margin-top:16px}@media(max-width:760px){.bbts-head{display:none}.bbts-row{grid-template-columns:24px minmax(0,1fr)}.bbts-row-readonly{grid-template-columns:minmax(0,1fr)}.bbts-row>span{display:none!important}.bbts-controls .row{flex-wrap:wrap}.bbts-action-row{flex-wrap:nowrap!important}.bbts-main-course-grid{grid-template-columns:minmax(0,1fr) 130px}}`));
+    const apply = () => { taskPanel.querySelector("#bbts-sub").textContent=t("ts_sub"); taskPanel.querySelector("#bbts-main-heading").textContent=t("dl_sec_course"); taskPanel.querySelector("#bbts-main-results").textContent=t("ts_title"); taskPanel.querySelector("#bbts-main-term-label").textContent=t("f_term"); taskPanel.querySelector("#bbts-main-course-label").textContent=t("f_course"); taskPanel.querySelector("#bbts-main-scan").textContent=t("scan"); taskPanel.querySelector("#bbts-open-manage").textContent=t("ts_manage"); taskPanel.querySelector("#bbts-term-label").textContent=t("f_term"); taskPanel.querySelector("#bbts-back").textContent=t("close"); taskPanel.querySelector("#bbts-history").textContent=t("ts_completed"); taskPanel.querySelector("#bbts-refresh").textContent=t("ts_refresh"); if(!taskPanel.querySelector("#bbts-manage").hidden) renderTaskCourses(); };
+    langHooks.add(apply); apply();
+    taskPanel.querySelector("#bbts-back").textContent=t("attach_back");
+    langHooks.add(() => { taskPanel.querySelector("#bbts-back").textContent=t("attach_back"); });
+    // 管理页内部只切换当前扫描结果；重新请求仅由进入管理页、切换学期或“刷新”触发。
+    taskPanel.querySelector("#bbts-history").onclick=()=>{taskView=taskView==="completed"?"unfinished":"completed";renderTaskCourses();};
+    taskPanel.querySelector("#bbts-toggle").onclick=()=>{taskView=taskView==="archived"?"unfinished":"archived";renderTaskCourses();};
+    taskPanel.querySelector("#bbts-refresh").onclick=refreshTaskPanel;
+    taskPanel.querySelector("#bbts-manage-term").onchange=refreshTaskPanel;
+    taskPanel.querySelector("#bbts-main-term").onchange=fillTaskMainCourses;
+    taskPanel.querySelector("#bbts-main-course").onchange=scanTaskMainCourse;
+    taskPanel.querySelector("#bbts-main-scan").onclick=scanTaskMainCourse;
+    taskPanel.querySelector("#bbts-open-manage").onclick=openTaskManager;
+    taskPanel.querySelector("#bbts-back").onclick=closeTaskManager;
+    taskPanel.querySelector("#bbts-batch").onclick=()=>{const set=taskArchive();taskPanel.querySelectorAll("#bbts-list input:checked").forEach(cb=>taskView==="archived"?set.delete(cb.dataset.key):set.add(cb.dataset.key));saveTaskArchive(set);renderTaskCourses();};
+    taskPanel.querySelector("#bbts-detail-close").onclick=()=>taskPanel.querySelector("#bbts-detail").hidden=true;
+    taskPanel.__close=closeTaskPanelToMain;
+    taskPanel._open=async()=>{setShellOpen(taskPanel,true);taskPanel.querySelector("#bbts-main").hidden=false;taskPanel.querySelector("#bbts-manage").hidden=true;taskPanel.querySelector("#bbts-title").textContent=t("ts_title");if(!taskGrouped.length){taskGrouped=groupCourses(await getQuizCourses());const options=taskGrouped.map(([tm])=>`<option value="${esc(tm)}">${esc(tm||t("other"))}</option>`).join("");taskPanel.querySelector("#bbts-main-term").innerHTML=options;taskPanel.querySelector("#bbts-manage-term").innerHTML=options;fillTaskMainCourses();}taskPanel.querySelector("#bbts-status").textContent="";};
+  }
+  function toggleTaskPanel(){buildTaskPanel();if(taskPanel.classList.contains("open"))taskPanel.__close();else taskPanel._open();}
+
   // ================================================================ 入口分流
   // @run-at 是 document-start，body / base_tools 还没有，所以 DOM 相关的初始化放到 whenReady 之后。
   if (location.hostname === "vlib.ita.teikyo-u.ac.jp") {
@@ -3145,8 +3502,8 @@
       else if (!authCfg.user || !authCfg.pass) { showGear(); }
       return;
     }
-    // 应用页：只保留批量下载、答题、自动登录设置三个入口。
-    const injectAll = () => { ensureNavItem(); ensureQuizNavItem(); injectAuthNav(); };
+    // 应用页：試題/作業与答题助手保持为两个独立入口。
+    const injectAll = () => { ensureTaskNavItem(); ensureQuizNavItem(); ensureNavItem(); injectAuthNav(); };
     injectAll();
     setInterval(injectAll, 1500);
     if (location.hash === SETTINGS_HASH) openAuthSettings();
