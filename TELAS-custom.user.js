@@ -1,19 +1,15 @@
 // ==UserScript==
 // @name            TELAS Custom (Teikyo LMS Assistant)
-// @namespace       https://github.com/NEMUI1218/TELAS-2
-// @version         1.3.6-custom
-// @description     Ultra 左侧导航四件套：① 按学期选课、勾选文件批量下载（含讲义视频直链，可打包 ZIP）；② 登录页自动填充登录；③ 选课程/评量答题，把题目复制给 AI，粘贴回答自动解析、填入、提交。④ 成绩：读 Campus Square 的单位修得状况照会，显示累计 GPA、学分、各科成绩、学期 GPA、毕业要件，可导出 CSV。纯本地运行：跑在你自己的浏览器、用你自己的登录会话，作者收不到任何数据。支持 Tampermonkey / Violentmonkey（桌面）和 iOS / macOS Safari 的 Userscripts。
-// @description:zh-CN Ultra 左侧导航四件套：① 按学期选课、勾选文件批量下载（含讲义视频直链，可打包 ZIP）；② 登录页自动填充登录；③ 选课程/评量答题，把题目复制给 AI，粘贴回答自动解析、填入、提交。④ 成绩：读 Campus Square 的单位修得状况照会，显示累计 GPA、学分、各科成绩、学期 GPA、毕业要件，可导出 CSV。纯本地运行：跑在你自己的浏览器、用你自己的登录会话，作者收不到任何数据。支持 Tampermonkey / Violentmonkey（桌面）和 iOS / macOS Safari 的 Userscripts。
-// @description:ja  Ultra の左メニューに 4 つの機能を追加：① 学期とコースを選び、教材を一括ダウンロード（講義ビデオの MP4 直リンク対応、ZIP にまとめることも可能）② ログインページで自動入力・自動ログイン ③ コースと評量を選び、問題を AI 用にコピーし、AI の回答を貼り付けると自動で解析・入力・提出。④ 成績：Campus Square の単位修得状況照会から累計GPA・単位・科目別成績・学期GPA・卒業要件を表示、CSV 出力も可能。すべてあなたのブラウザ内で、あなた自身のログインセッションを使って動作し、作者にデータが送られることは一切ありません。Tampermonkey / Violentmonkey（PC）と iOS / macOS Safari の Userscripts に対応。
-// @description:en  Adds four tools to the Ultra left menu: ① pick a term and course, then bulk-download materials (including direct MP4 links for lecture videos, optionally packed as a ZIP); ② auto-fill and auto sign-in on the login page; ③ pick a course and assessment, copy the questions for an AI, then paste the AI's answer back to parse, fill in and submit. ④ grades: reads your Campus Square transcript and shows cumulative GPA, credits, per-course grades, per-term GPA and graduation requirements, with CSV export. Runs entirely in your own browser with your own login session; no data is ever sent to the author. Works with Tampermonkey / Violentmonkey (desktop) and Userscripts for iOS / macOS Safari.
+// @namespace       TELAS-Custom
+// @version         1.4.0-custom
+// @description     Ultra 左侧导航三件套：批量下载、答题、自动登录设置。支持 Tampermonkey / Violentmonkey 和 iOS / macOS Safari 的 Userscripts。
+// @description:zh-CN Ultra 左侧导航三件套：批量下载、答题、自动登录设置。支持 Tampermonkey / Violentmonkey 和 iOS / macOS Safari 的 Userscripts。
+// @description:ja  Ultra の左メニューに一括ダウンロード、問題演習、自動ログイン設定を追加します。
+// @description:en  Adds bulk download, quiz helper, and auto-login settings to the Ultra navigation.
 // @author          NEMUI1218
 // @match           https://lms2017.teikyo-u.ac.jp/*
 // @match           https://vlib.ita.teikyo-u.ac.jp/Mediasite/*
 // @match           https://teikyo.ex-tic.com/auth/session*
-// @match           https://portal.cs.teikyo-u.ac.jp/*
-// @icon            https://raw.githubusercontent.com/manjuu08/telas/refs/heads/main/favicon.ico
-// @homepageURL     https://github.com/NEMUI1218/TELAS-2
-// @supportURL      https://github.com/NEMUI1218/TELAS-2/issues
 // @grant           GM_xmlhttpRequest
 // @grant           GM.xmlHttpRequest
 // @grant           GM_getValue
@@ -32,10 +28,6 @@
 // @run-at          document-start
 // @noframes
 // ==/UserScript==
-//
-// ⚠ userscript/teikyo-bb.user.js 是用 build.mjs 从 src/ 生成的（入口 src/main.user.js + src/modules/*.js）。
-//   改代码请改 src/ 下的源文件；直接改 userscript/teikyo-bb.user.js 的内容会在下次构建时被覆盖。
-
 /*
  * 兼容性说明（同一份脚本跑在两类管理器上）：
  * - Tampermonkey / Violentmonkey 认 GM_* 和 GM.*；iOS/macOS Safari 的 Userscripts 只认 GM.*（且只在
@@ -73,65 +65,20 @@
   // 防死循环：15 秒内已经跳过一次又回到这里（比如 LMS 又把人送回 SSO），就停手，让页面按原流程走。
   // 其余 ex-tic 页面一律不碰，下面的 xsrf 钩子等也不会在 ex-tic 上安装。
   //
-  // Campus Square 也走同一个 /auth/session（portal.cs → /campusweb/ssologin.do → ex-tic 的 SAML → /auth/session，
-  // 中间全是 302，最后的地址和页面与 LMS 那条完全一样）。所以在 portal.cs 上先记一个时间戳（GM 存储跨域共享），
-  // 到 ex-tic 时 30 秒内有这个记号、或 referrer 是 portal.cs，就不跳 LMS，让 Extic 照常登录回 Campus Square。
-  const CS_KEY = "telas_cs_ts";
-  const gmVal = {
-    async get(k, d) {
-      try {
-        if (typeof GM !== "undefined" && GM.getValue) return await GM.getValue(k, d);
-        if (typeof GM_getValue === "function") return GM_getValue(k, d);
-      } catch (e) {}
-      return d;
-    },
-    async set(k, v) {
-      try {
-        if (typeof GM !== "undefined" && GM.setValue) return await GM.setValue(k, v);
-        if (typeof GM_setValue === "function") return GM_setValue(k, v);
-      } catch (e) {}
-    },
-  };
-  if (location.hostname === "portal.cs.teikyo-u.ac.jp") {
-    await gmVal.set(CS_KEY, Date.now());
-    return;
-  }
   if (location.hostname === "teikyo.ex-tic.com") {
-    // 2026-10-22：成绩功能要登录 Campus Square。Extic 的登录是多步的（用户名 → 密码 → 二次验证），
-    // 每一步都是一次新的页面加载。原先只在第一次到达时看 30 秒内的 CS_KEY，用户输验证码慢一点，
-    // 后面的步骤就会被当成「App 入口」跳回 LMS。现在一旦认出是 Campus Square 的登录，就在本标签页的
-    // sessionStorage 记一个粘滞标记，整个登录过程都不再跳。脚本不碰登录表单本身（不代填密码、不代填验证码）。
-    if (/^\/auth\/session/.test(location.pathname)) {
-      const CS_LOGIN = "telas_cs_login";
-      let csLogin = false;
-      try { csLogin = sessionStorage.getItem(CS_LOGIN) === "1"; } catch (e) {}
-      const csTs = Number(await gmVal.get(CS_KEY, 0)) || 0;
-      if (csLogin || Date.now() - csTs < 60000 || /^https:\/\/portal\.cs\.teikyo-u\.ac\.jp\//.test(document.referrer)) {
-        try { sessionStorage.setItem(CS_LOGIN, "1"); } catch (e) {}
-        return;
-      }
-      // App → LMS 的跳转只在登录入口（裸 /auth/session）做，其余步骤一律不碰
-      if (/^\/auth\/session\/?$/.test(location.pathname)) {
-        const KEY = "telas_extic_redirect_ts";
-        let last = 0;
-        try { last = Number(sessionStorage.getItem(KEY) || 0); } catch (e) {}
-        if (Date.now() - last > 15000) {
-          try { sessionStorage.setItem(KEY, String(Date.now())); } catch (e) {}
-          location.replace("https://lms2017.teikyo-u.ac.jp/");
-        } else {
-          console.warn("[TELAS] 15 秒内重复回到 ex-tic，已停止自动跳转");
-        }
+    if (/^\/auth\/session\/?$/.test(location.pathname)) {
+      const key = "telas_extic_redirect_ts";
+      const last = Number(sessionStorage.getItem(key) || 0);
+      if (Date.now() - last > 15000) {
+        sessionStorage.setItem(key, String(Date.now()));
+        location.replace("https://lms2017.teikyo-u.ac.jp/");
       }
     }
     return;
   }
 
-  // TELAS 网站（GitHub Pages）上脚本只当「桥」：替网页向 LMS 发只读请求。此时 ORIGIN 指向 LMS。
-  // 正式地址 telas.manjuu.net（Cloudflare Pages）；github.io 是备用地址
-  const ON_SITE = location.hostname === "telas.manjuu.net" ||
-    (location.hostname === "manjuu08.github.io" && location.pathname.startsWith("/telas-site/"));
   const LMS = "https://lms2017.teikyo-u.ac.jp";
-  const ORIGIN = ON_SITE ? LMS : location.origin;
+  const ORIGIN = location.origin;
   const API = (p) => ORIGIN + p;
   const NAV_ID = "bbdl-nav";
   const PANEL_ID = "bbdl-panel";
@@ -336,6 +283,7 @@
       submit_ans: "提出", confirm_submit: "{0} 問を提出しますか？",
       confirm_unanswered: "未回答: {0}",
       submit_done: "提出完了: 成功 {0}、失敗 {1}",
+      submit_verify_failed: "書き込み後の確認に失敗しました（確認済み {0}/{1}）。ブラウザーで確認してください。",
       clear_ans: "全回答をクリア", confirm_clear: "すべての回答をクリアしますか？",
       clear_done: "クリア完了: 成功 {0}、失敗 {1}",
       browser_submit: "ブラウザで開く", browser_opened: "ブラウザで開きました",
@@ -371,45 +319,6 @@
       dl_sec_course: "コースを選択", dl_desc: "コースを選ぶと教材を自動でスキャンします。講義ビデオ🎬は新しいタブで開きます。", dl_sec_files: "ファイル", dl_empty: "コースを選ぶと、ここにファイルが表示されます",
       qz_sec_pick: "評量を選択", qz_preview_empty: "AI の回答を貼り付けると、ここに解析結果が表示されます",
       al_sec_account: "アカウント", al_sec_behavior: "動作",
-      gr_nav: "成績",
-      gr_sub: "Campus Square",
-      gr_title: "成績",
-      gr_load: "読み込む",
-      gr_reload: "再読み込み",
-      gr_csv: "CSV に出力",
-      gr_loading: "成績を読み込み中…",
-      gr_failed: "読み込みに失敗しました: {0}",
-      gr_empty: "「読み込む」を押すと、Campus Square の単位修得状況照会から成績を取得します。",
-      gr_login_msg: "Campus Square にログインしていません（またはログインが切れています）。下のボタンで Campus Square を別タブで開いてログインし、この画面に戻って「再読み込み」を押してください。",
-      gr_login_btn: "Campus Square を開く",
-      gr_cum_gpa: "累計GPA",
-      gr_credits: "卒業認定単位",
-      gr_progress: "進級判定",
-      gr_dist: "評価の分布",
-      gr_tab_courses: "科目別",
-      gr_tab_terms: "学期別",
-      gr_tab_reqs: "卒業要件",
-      gr_all: "全学期",
-      gr_c_term: "学期",
-      gr_c_subject: "科目",
-      gr_c_category: "区分",
-      gr_c_credit: "単位",
-      gr_c_grade: "評価",
-      gr_c_pass: "合否",
-      gr_c_courses: "科目数",
-      gr_c_registered: "履修単位",
-      gr_c_earned: "修得単位",
-      gr_c_term_gpa: "学期GPA",
-      gr_c_cum_gpa: "累計GPA",
-      gr_c_total: "累計修得単位",
-      gr_req_cat: "科目区分",
-      gr_req_need: "必要単位",
-      gr_req_earned: "修得単位",
-      gr_req_in: "他区分からの振替",
-      gr_req_counted: "認定単位",
-      gr_req_out: "他区分への振替",
-      gr_req_short: "不足単位",
-      gr_note: "学期GPA と学期ごとの累計GPA は S=4・A=3・B=2・C=1・D=0 の単位加重平均として計算しています（T-Day の公式値と一致することを確認済み）。上の累計GPA は Campus Square の表示値です。",
     },
     en: {
       nav: "Bulk Download", title: "Bulk Download", sub_dl: "Course materials",
@@ -475,6 +384,7 @@
       submit_ans: "Submit", confirm_submit: "Submit {0} answers?",
       confirm_unanswered: "Unanswered: {0}",
       submit_done: "Submitted: {0} ok, {1} failed",
+      submit_verify_failed: "Could not verify saved answers ({0}/{1} verified). Check them in the browser.",
       clear_ans: "Clear all answers", confirm_clear: "Clear all answers?",
       clear_done: "Cleared: {0} ok, {1} failed",
       browser_submit: "Open in browser", browser_opened: "Opened in browser",
@@ -510,45 +420,6 @@
       dl_sec_course: "Choose a course", dl_desc: "Picking a course scans its materials automatically. Lecture videos 🎬 open in a new tab.", dl_sec_files: "Files", dl_empty: "Pick a course to list its files here",
       qz_sec_pick: "Choose an assessment", qz_preview_empty: "Paste the AI answer above to see the parsed result here",
       al_sec_account: "Account", al_sec_behavior: "Behavior",
-      gr_nav: "Grades",
-      gr_sub: "Campus Square",
-      gr_title: "Grades",
-      gr_load: "Load",
-      gr_reload: "Reload",
-      gr_csv: "Export CSV",
-      gr_loading: "Loading grades…",
-      gr_failed: "Failed to load: {0}",
-      gr_empty: "Click “Load” to read your grades from Campus Square.",
-      gr_login_msg: "You are not signed in to Campus Square (or the session expired). Open Campus Square in a new tab with the button below, sign in there, then come back and click “Reload”.",
-      gr_login_btn: "Open Campus Square",
-      gr_cum_gpa: "Cumulative GPA",
-      gr_credits: "Credits toward graduation",
-      gr_progress: "Promotion",
-      gr_dist: "Grade distribution",
-      gr_tab_courses: "Courses",
-      gr_tab_terms: "By term",
-      gr_tab_reqs: "Requirements",
-      gr_all: "All terms",
-      gr_c_term: "Term",
-      gr_c_subject: "Course",
-      gr_c_category: "Category",
-      gr_c_credit: "Credits",
-      gr_c_grade: "Grade",
-      gr_c_pass: "Result",
-      gr_c_courses: "Courses",
-      gr_c_registered: "Registered",
-      gr_c_earned: "Earned",
-      gr_c_term_gpa: "Term GPA",
-      gr_c_cum_gpa: "Cumulative GPA",
-      gr_c_total: "Total earned",
-      gr_req_cat: "Category",
-      gr_req_need: "Required",
-      gr_req_earned: "Earned",
-      gr_req_in: "Transferred in",
-      gr_req_counted: "Counted",
-      gr_req_out: "Transferred out",
-      gr_req_short: "Shortfall",
-      gr_note: "Term GPA and the running cumulative GPA are calculated as a credit-weighted average with S=4, A=3, B=2, C=1, D=0 (checked against the official T-Day figures). The cumulative GPA at the top is the value shown by Campus Square.",
     },
     zh: {
       nav: "批量下载", title: "批量下载", sub_dl: "课程资料",
@@ -614,6 +485,7 @@
       submit_ans: "提交", confirm_submit: "提交 {0} 题的答案？",
       confirm_unanswered: "未答：{0}",
       submit_done: "提交完成：成功 {0}，失败 {1}",
+      submit_verify_failed: "答案写入后验证失败（已确认 {0}/{1}），请在浏览器中检查。",
       clear_ans: "清空全部答案", confirm_clear: "清空全部答案？",
       clear_done: "清空完成：成功 {0}，失败 {1}",
       browser_submit: "在浏览器打开", browser_opened: "已在浏览器打开",
@@ -649,45 +521,6 @@
       dl_sec_course: "选择课程", dl_desc: "选择课程后会自动扫描资料。讲义视频🎬在新标签页打开。", dl_sec_files: "文件", dl_empty: "选择课程后，文件会列在这里",
       qz_sec_pick: "选择测验", qz_preview_empty: "在上方粘贴 AI 的回答后，解析结果会显示在这里",
       al_sec_account: "账号", al_sec_behavior: "行为",
-      gr_nav: "成绩",
-      gr_sub: "Campus Square",
-      gr_title: "成绩",
-      gr_load: "读取",
-      gr_reload: "重新读取",
-      gr_csv: "导出 CSV",
-      gr_loading: "正在读取成绩…",
-      gr_failed: "读取失败: {0}",
-      gr_empty: "点「读取」，从 Campus Square 的单位修得状况照会读取成绩。",
-      gr_login_msg: "还没有登录 Campus Square（或登录已过期）。点下面的按钮在新标签页打开 Campus Square 并登录，然后回到这里点「重新读取」。",
-      gr_login_btn: "打开 Campus Square",
-      gr_cum_gpa: "累计 GPA",
-      gr_credits: "毕业认定学分",
-      gr_progress: "升级判定",
-      gr_dist: "评价分布",
-      gr_tab_courses: "课程成绩",
-      gr_tab_terms: "学期汇总",
-      gr_tab_reqs: "毕业要件",
-      gr_all: "全部学期",
-      gr_c_term: "学期",
-      gr_c_subject: "科目",
-      gr_c_category: "区分",
-      gr_c_credit: "学分",
-      gr_c_grade: "评价",
-      gr_c_pass: "合否",
-      gr_c_courses: "门数",
-      gr_c_registered: "履修学分",
-      gr_c_earned: "修得学分",
-      gr_c_term_gpa: "学期 GPA",
-      gr_c_cum_gpa: "累计 GPA",
-      gr_c_total: "累计修得学分",
-      gr_req_cat: "科目区分",
-      gr_req_need: "必要学分",
-      gr_req_earned: "修得学分",
-      gr_req_in: "从其他区分转入",
-      gr_req_counted: "认定学分",
-      gr_req_out: "转到其他区分",
-      gr_req_short: "不足学分",
-      gr_note: "学期 GPA 和各学期的累计 GPA 按 S=4、A=3、B=2、C=1、D=0 以学分加权计算（已和 T-Day 的官方数字核对一致）。上方的累计 GPA 是 Campus Square 显示的官方值。",
     },
   };
   let lang = "ja";
@@ -748,7 +581,6 @@
 
   // ---------------------------------------------------------------- 数据层
   async function getJSON(url) {
-    if (ON_SITE) return gmJSON(url);
     const r = await fetch(url, { credentials: "include", headers: { Accept: "application/json" } });
     if (!r.ok) throw new Error("HTTP " + r.status);
     return r.json();
@@ -1050,10 +882,6 @@
     .bbtool-shell .bbtool-headtools{flex:0 0 auto; display:flex; gap:6px; margin-top:2px}
     .bbtool-shell .bbtool-headtools select{height:30px!important; min-height:30px!important; width:auto!important;
       padding:0 26px 0 8px!important; font-size:12px!important; background-position:right 8px center!important}
-    .bbtool-shell .bbtool-gh{flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px;
-      color:var(--fg)!important; opacity:.7; text-decoration:none!important; border-radius:50%}
-    .bbtool-shell .bbtool-gh:hover, .bbtool-shell .bbtool-gh:focus-visible{opacity:1}
-    .bbtool-shell .bbtool-gh svg{width:20px; height:20px; display:block}
 
     .bbtool-shell .bbtool-body{flex:1 1 auto; min-height:0; overflow:auto; padding:26px var(--pad) 32px; overscroll-behavior:contain}
     .bbtool-shell .bbtool-footer{flex:0 0 auto; display:flex; flex-direction:column; gap:10px;
@@ -1197,7 +1025,6 @@
     document.querySelectorAll(".bbtool-shell .bbtool-theme").forEach((s) => { s.value = m; });
   }
 
-  const GH_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>';
   const CLOSE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="square" fill="none"/></svg>';
 
   // footerHtml 里：.bbtool-status 放状态文字，.bbtool-actions 放按钮；带 .bbtool-dismiss 的按钮关闭面板。
@@ -1221,8 +1048,6 @@
             <option value="ja">日本語</option><option value="en">English</option><option value="zh">中文</option>
           </select>
           <select class="bbtool-theme"><option value="light"></option><option value="dark"></option></select>
-          <a class="bbtool-gh" href="https://github.com/manjuu08/telas" target="_blank" rel="noopener"
-            title="GitHub — manjuu08/telas" aria-label="GitHub">${GH_SVG}</a>
         </div>
       </div>
       <div class="bbtool-body">${bodyHtml}</div>
@@ -2196,7 +2021,9 @@
   // 会写数据的请求（POST/PATCH）：先试已验证可用的通道，403/401 就换另一条再试。
   async function apiMutate(method, path, body) {
     const url = LMS + path;
-    const order = chosenVia === "page" ? ["page", "gm"] : ["gm", "page"];
+    // Answer writes are same-origin. The page channel carries Blackboard's
+    // active cookies/origin most faithfully; GM is only a fallback.
+    const order = ["page", "gm"];
     let last = null;
     const probes = [];
     for (const via of order) {
@@ -2298,7 +2125,7 @@
     return await apiGet(`/learn/api/v1/courses/${courseId}/gradebook/attempts/${attemptId}/assessment/answers`);
   }
   async function submitAnswer(courseId, attemptId, answerId, body) {
-    return await apiPatch(`/learn/api/v1/courses/${courseId}/gradebook/attempts/${attemptId}/assessment/answers/${answerId}`, body);
+    return await apiPatch(`/learn/api/v1/courses/${encodeURIComponent(courseId)}/gradebook/attempts/${encodeURIComponent(attemptId)}/assessment/answers/${encodeURIComponent(answerId)}`, body);
   }
   // ---- 题目解析 / AI 文本生成 / 答案解析 / 提交体构造 ----
   const IMAGE_EXTS = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "image/bmp": "bmp", "image/svg+xml": "svg" };
@@ -2379,7 +2206,7 @@
       if (qType === "matching") {
         const prompts = (qData.prompts || []).map(p => textOf(p.promptText));
         const ansList = (qData.answers || []).map(a => textOf(a.answerText));
-        questions.push({ id: q.id, question: qText, type: "matching", prompts, options: ansList, images });
+        questions.push({ id: q.id, question: qText, type: "matching", prompts, options: ansList, api_type: qType, images });
       } else if (qType.toLowerCase() === "eitheror") {
         questions.push({ id: q.id, question: qText, type: "truefalse", options: [], api_type: qType, images });
       } else if (qType.toLowerCase() === "fimb") {
@@ -2388,7 +2215,7 @@
         questions.push({ id: q.id, question: qText, type: "fimb", options: [], blanks, api_type: qType, images });
       } else {
         const options = (qData.answers || []).map(a => textOf(a.answerText));
-        const item = { id: q.id, question: qText, type: qType, options, images };
+        const item = { id: q.id, question: qText, type: qType, options, api_type: qType, images };
         if (qType === "multipleanswer") {
           const limit = qData.answerSelectionLimit;
           if (typeof limit === "number" && limit > 0) item.max_select = limit;
@@ -2418,30 +2245,23 @@
     }
     return block;
   }
+  function formatQuestionsPlain(questions, tr) {
+    let display = "";
+    questions.forEach((q, i) => { display += formatQuestion(i, q, tr) + "\n"; });
+    return display.trim();
+  }
   function formatQuestionsDisplay(questions, tr) {
     let display = tr("order_warning") + "\n\n" + tr("questions_loaded", questions.length) + "\n\n";
     questions.forEach((q, i) => { display += formatQuestion(i, q, tr) + "\n"; });
     return display;
   }
   function buildAiText(questions, tr) {
-    const hasMatching = questions.some(q => q.type === "matching");
-    let text = tr("ai_intro");
-    if (hasMatching) {
-      text += tr("ai_matching_important");
-      text += tr("ai_matching_format1");
-      text += tr("ai_matching_example");
-      text += tr("ai_matching_warning");
-      text += tr("ai_other_format");
-      text += tr("ai_other_example");
-    } else {
-      text += tr("ai_intro_no_matching");
-    }
-    if (questions.some(isMultiSelect)) text += tr("ai_multi_format");
-    if (questions.some(q => q.type === "fimb")) text += tr("ai_fimb_format");
-    const imgCount = questions.reduce((n, q) => n + (q.images || []).length, 0);
-    if (imgCount) text += tr("ai_images_note");
-    questions.forEach((q, i) => { text += formatQuestion(i, q, tr) + "\n"; });
-    return text;
+    const instructions =
+      "请回答以下 Blackboard 试题。只输出答案，每题一行。\n" +
+      "选择题格式：[1] A；多选格式：[2] A,C；判断题用 正 或 誤；\n" +
+      "填空题格式：[3]-1 答案；匹配题格式：[4]-1 A。\n\n" +
+      "请严格按题号作答，不要改变题目顺序。";
+    return instructions + "\n\n" + formatQuestionsPlain(questions, tr);
   }
 
   // ---- parse ----
@@ -2650,7 +2470,7 @@
     return "<div>" + lines.join("</div><div>") + "</div>";
   }
   function buildAnswerBody(q, ans) {
-    if (q.type === "matching") return { questionType: "matching", givenAnswers: ans };
+    if (q.type === "matching") return { questionType: q.api_type || "matching", givenAnswers: ans };
     if (q.type === "fimb") {
       const blanks = q.blanks;
       if (!Array.isArray(ans) || !blanks || ans.length !== blanks.length) return null;
@@ -2663,7 +2483,7 @@
       if (isEitherOr(q)) return { questionType: q.api_type, givenAnswer: ans === "正" };
       const selected = [false, false];
       selected[ans === "正" ? 0 : 1] = true;
-      return { questionType: "multipleanswer", givenAnswer: selected };
+      return { questionType: q.api_type || q.type || "multipleanswer", givenAnswer: selected };
     }
     const letters = choiceLetters(ans);
     if (!letters.length) return null;
@@ -2673,17 +2493,17 @@
       if (idx >= q.options.length) return null;
       selected[idx] = true;
     }
-    return { questionType: "multipleanswer", givenAnswer: selected };
+    return { questionType: q.api_type || q.type || "multipleanswer", givenAnswer: selected };
   }
   function buildClearBody(q) {
-    if (q.type === "matching") return { questionType: "matching", givenAnswers: new Array(q.prompts.length).fill(null) };
+    if (q.type === "matching") return { questionType: q.api_type || "matching", givenAnswers: new Array(q.prompts.length).fill(null) };
     if (isEitherOr(q)) return { questionType: q.api_type, givenAnswer: null };
     if (q.type === "fimb") {
       const ga = {};
       (q.blanks || []).forEach(b => { ga[b] = ""; });
       return { questionType: q.api_type, givenAnswers: ga };
     }
-    return { questionType: "multipleanswer", givenAnswer: new Array(q.options.length).fill(false) };
+    return { questionType: q.api_type || q.type || "multipleanswer", givenAnswer: new Array(q.options.length).fill(false) };
   }
   function unanswered(questions, answers) { return questions.map((_, i) => i).filter(i => !(i in answers)).map(i => i + 1); }
 
@@ -3107,12 +2927,14 @@
       ta.remove();
       return ok;
     }
-    function copyQuizQuestions() {
+    function copyQuizQuestions(forAi = false) {
       if (!qzQuestions.length) { status(t("select_quiz_first")); return; }
-      const aiText = buildAiText(qzQuestions, t);
-      let copied = copySync(aiText);
+      const text = forAi
+        ? buildAiText(qzQuestions, t)
+        : formatQuestionsPlain(qzQuestions, t);
+      let copied = copySync(text);
       if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
-        try { navigator.clipboard.writeText(aiText).then(() => status(t("copied")), () => status("Copy failed")); copied = true; } catch (e) {}
+        try { navigator.clipboard.writeText(text).then(() => status(t("copied")), () => status("Copy failed")); copied = true; } catch (e) {}
       }
       status(copied ? t("copied") : "Copy failed");
       return copied;
@@ -3134,12 +2956,12 @@
     }
 
     $("#bbqz-copy").onclick = () => {
-      copyQuizQuestions();
+      copyQuizQuestions(false);
     };
 
     $("#bbqz-ask-ai").onclick = () => {
       if (!qzQuestions.length) { status(t("select_quiz_first")); return; }
-      copyQuizQuestions();
+      copyQuizQuestions(true);
       openAiTarget();
     };
 
@@ -3185,12 +3007,14 @@
       await resolveXsrf(false);
       console.log("[bbqz] submit", diagXsrf(), "attempt=", qzAttemptId, "course=", qzCourseId);
       let success = 0, fail = 0;
+      const expectedBodies = new Map();
       for (let i = 0; i < qzQuestions.length; i++) {
         if (!(i in qzAllAnswers)) continue;
         const q = qzQuestions[i];
         const ans = qzAllAnswers[i];
         const body = buildAnswerBody(q, ans);
         if (!body) { fail++; continue; }
+        expectedBodies.set(String(q.id), body);
         try {
           let r = await submitAnswer(qzCourseId, qzAttemptId, q.id, body);
           if (!r.ok && (r.status === 403 || r.status === 401)) {
@@ -3209,6 +3033,35 @@
           }
         } catch (e) { fail++; console.error("submit err", e); }
         await new Promise(r => setTimeout(r, 300));
+      }
+      if (success) {
+        try {
+          const fresh = await getAnswers(qzCourseId, qzAttemptId);
+          const saved = new Map(((fresh && fresh.results) || []).map((item) => [String(item.id || ""), item]));
+          const sameValue = (actual, expected) => {
+            if (Array.isArray(expected)) return Array.isArray(actual) && expected.length === actual.length && expected.every((v, i) => sameValue(actual[i], v));
+            if (expected && typeof expected === "object") {
+              return actual && typeof actual === "object" && Object.keys(expected).every((key) => sameValue(actual[key], expected[key]));
+            }
+            return actual === expected;
+          };
+          const answerMatches = (item, expected) => {
+            if (!item || !expected) return false;
+            if (Object.prototype.hasOwnProperty.call(expected, "givenAnswer")) return sameValue(item.givenAnswer, expected.givenAnswer);
+            if (Object.prototype.hasOwnProperty.call(expected, "givenAnswers")) return sameValue(item.givenAnswers, expected.givenAnswers);
+            return false;
+          };
+          const verified = [...expectedBodies.entries()].filter(([id, expected]) => answerMatches(saved.get(id), expected)).length;
+          if (verified < success) {
+            status(t("submit_verify_failed", verified, success));
+            offerBrowserFallback();
+            return;
+          }
+        } catch (error) {
+          status(t("submit_verify_failed", 0, success));
+          offerBrowserFallback();
+          return;
+        }
       }
       status(t("submit_done", success, fail));
     };
@@ -3258,409 +3111,6 @@
     if (qzPanel.classList.contains("open")) setShellOpen(qzPanel, false);
     else qzPanel._open();
   }
-  // ================================================================ TELAS 网站的桥（telas.manjuu.net，备用 manjuu08.github.io/telas-site）
-  // 网站是静态页面，浏览器的 CORS 不让它直接访问 LMS；脚本的 GM 请求不受限制、还带着浏览器里 LMS 的登录状态，
-  // 所以由脚本替网页办事。只开放下面这几个只读操作，地址全部由脚本自己拼，网页不能让脚本访问任意网址。
-  // 协议：网页 → window.postMessage({ns, dir:"req", id, op, args})；脚本 → {ns, dir:"res", id, ok, data|error}，
-  //       扫描过程中另发 {ns, dir:"progress", id, text}；脚本就绪时广播 {ns, dir:"ready", version}。
-  function gmJSON(url) {
-    const gm = gmXhr();
-    if (!gm) return Promise.reject(Object.assign(new Error("no GM_xmlhttpRequest"), { code: "nogm" }));
-    return new Promise((resolve, reject) => {
-      const ret = gm({
-        method: "GET", url, responseType: "text", anonymous: false,
-        headers: { Accept: "application/json" },
-        onload: (res) => {
-          const text = res.responseText != null ? res.responseText : res.response;
-          if (res.status === 401 || res.status === 403 || /^\s*</.test(text || "")) {
-            return reject(Object.assign(new Error("not logged in"), { code: "auth" }));
-          }
-          if (res.status < 200 || res.status >= 300) return reject(Object.assign(new Error("HTTP " + res.status), { code: "http" }));
-          try { resolve(JSON.parse(text)); } catch (e) { reject(Object.assign(new Error("bad JSON"), { code: "http" })); }
-        },
-        onerror: () => reject(Object.assign(new Error("network"), { code: "net" })),
-        ontimeout: () => reject(Object.assign(new Error("timeout"), { code: "net" })),
-      });
-      if (ret && typeof ret.catch === "function") ret.catch(() => {});
-    });
-  }
-
-  const BB_ID = /^_\d+_\d+$/;
-  const needId = (v) => { if (!BB_ID.test(String(v || ""))) throw Object.assign(new Error("bad id"), { code: "args" }); return v; };
-  // 截止日期字段在不同版本里叫法不一，按顺序找
-  const dueOf = (c) => c.dueDate || (c.grading && c.grading.due) || c.due || c.dueDateTime || null;
-
-  const BRIDGE_OPS = {
-    async hello() {
-      const v = (typeof GM_info !== "undefined" && GM_info.script && GM_info.script.version) || "";
-      return { version: v };
-    },
-    async me() {
-      const me = await gmJSON(API("/learn/api/v1/users/me"));
-      return { name: [me.familyName, me.givenName].filter(Boolean).join(" ") || me.userName || "" };
-    },
-    async courses() {
-      return groupCourses(await getCourses());
-    },
-    async scan({ cid }, progress) {
-      needId(cid);
-      await gmJSON(API(`/learn/api/v1/courses/${cid}`)); // 先确认登录和权限，免得静默返回空树
-      return scanTree(cid, "ROOT", "", progress);
-    },
-    async columns({ cid }) {
-      needId(cid);
-      const data = await gmJSON(API(`/learn/api/v1/courses/${cid}/gradebook/columns?limit=1000`));
-      return (data.results || [])
-        .map((c) => ({ id: c.id, name: c.columnName || c.name || "", due: dueOf(c), contentId: c.contentId || null }))
-        .filter((c) => c.id && c.due);
-    },
-    async attempts({ cid, colId }) {
-      needId(cid); needId(colId);
-      const data = await gmJSON(API(`/learn/api/v1/courses/${cid}/gradebook/columns/${colId}/attempts?limit=100`));
-      return (data.results || []).map((a) => ({ status: a.status || "" }));
-    },
-    async file({ url, name }) {
-      // 只允许 LMS 上 /bbcswebdav/ 下的文件
-      const path = String(url || "").replace(LMS, "");
-      if (!path.startsWith("/bbcswebdav/")) throw Object.assign(new Error("bad url"), { code: "args" });
-      const blob = await fetchBlob(LMS + path, name || "");
-      return { buffer: await blob.arrayBuffer(), type: blob.type || "" };
-    },
-  };
-
-  function initSiteBridge() {
-    const NS = "telas-bridge";
-    const post = (msg, transfer) => window.postMessage({ ns: NS, ...msg }, location.origin, transfer || []);
-    window.addEventListener("message", async (e) => {
-      // 只收同一页面（同源）发来的请求；自己发出的回复也会进来，按 dir 过滤
-      if (e.origin !== location.origin) return;
-      const d = e.data;
-      if (!d || d.ns !== NS || d.dir !== "req" || typeof d.op !== "string") return;
-      const fn = Object.prototype.hasOwnProperty.call(BRIDGE_OPS, d.op) ? BRIDGE_OPS[d.op] : null;
-      if (!fn) return post({ dir: "res", id: d.id, ok: false, error: { code: "op", message: "unknown op" } });
-      try {
-        const data = await fn(d.args || {}, (text) => post({ dir: "progress", id: d.id, text: String(text) }));
-        const transfer = data && data.buffer && data.buffer.byteLength != null ? [data.buffer] : [];
-        post({ dir: "res", id: d.id, ok: true, data }, transfer);
-      } catch (err) {
-        post({ dir: "res", id: d.id, ok: false, error: { code: err.code || "error", message: String(err.message || err) } });
-      }
-    });
-    BRIDGE_OPS.hello().then((h) => post({ dir: "ready", version: h.version }));
-  }
-
-  // ================================================================ 成績（Campus Square）
-  // LMS 左メニューの 4 つ目。成績そのものは Campus Square（portal.cs）の「単位修得状況照会」にあり、
-  // LMS とは別オリジンなので GM_xmlhttpRequest で読む（あなたのブラウザの portal.cs ログイン Cookie を使う、読み取りのみ）。
-  // GM_xmlhttpRequest 経由なので LMS のページから離れずに表示できる＝ログインのための画面遷移は起きない。
-  // 未ログインのときだけ「Campus Square を開く」ボタンで別タブを開き、そこで本人がログインする
-  // （パスワードや二段階認証はこのスクリプトが一切代行しない。CS_KEY を先に立てて ex-tic が LMS に戻さないようにするだけ）。
-  // GPA 計算と HTML 解析はデスクトップ版 services/grades.py・campusweb_client.py と同一（差分テスト済み）。
-  const GR_NAV_ID = "bbgr-nav";
-  const GR_PANEL_ID = "bbgr-panel";
-  const GR_FLOW = "SIW0001300-flow";
-  const CW_BASE = "https://portal.cs.teikyo-u.ac.jp/campusweb";
-  const CW_DO = CW_BASE + "/campussquare.do";
-  const GR_ICON =
-    '<svg viewBox="0 0 16 16" width="16" height="16" focusable="false" aria-hidden="true">' +
-    '<path fill="currentColor" d="M2 13.2h12v1.3H2zM3.4 7.6h2.1v5H3.4zM6.9 4.5H9v8H6.9zM10.4 2.2h2.1v10.3h-2.1z"/></svg>';
-
-  // 列見出し（画面のまま）
-  const GC = { major: "科目大区分", middle: "科目中区分", minor: "科目小区分", subject: "科目",
-    credit: "単位数", year: "修得年度", term: "修得学期", grade: "評価", pass: "合否" };
-  const GR_POINTS = { S: 4, A: 3, B: 2, C: 1, D: 0 };
-  const GR_TORDER = { "前期": 1, "通年": 2, "後期": 3 };
-  const GR_REQKEY = {
-    "必要単位": "gr_req_need", "修得単位": "gr_req_earned", "他区分からの振替単位": "gr_req_in",
-    "認定単位": "gr_req_counted", "他区分への振替単位": "gr_req_out", "不足単位": "gr_req_short",
-  };
-
-  // 純ロジック（services/grades.py と同一）
-  // 注意：不能叫 GM —— 会遮住油猴管理器的全局 GM（GM.getValue / GM.xmlHttpRequest），
-  // 同一作用域里的 typeof GM 会落进暂时性死区直接抛错，整个脚本起不来。
-  const GRM = {
-    norm: (s) => String(s == null ? "" : s).replace(/　/g, " ").replace(/\s+/g, " ").trim(),
-    toFloat(s, d = 0) { const v = parseFloat(String(s == null ? "" : s).replace(/,/g, "").trim()); return isNaN(v) ? d : v; },
-    gradePoint(g) {
-      const k = String(g || "").trim().toUpperCase().replace(/[ＳＡＢＣＤ]/g, (c) => "SABCD"["ＳＡＢＣＤ".indexOf(c)]);
-      return Object.prototype.hasOwnProperty.call(GR_POINTS, k) ? GR_POINTS[k] : null;
-    },
-    passed: (r) => String(r[GC.pass] || "").trim() === "合",
-    termKey: (r) => [String(r[GC.year] || "").trim(), String(r[GC.term] || "").trim()],
-    termId: (k) => k.join("|"),
-    termLabel: (k) => (k[0] + " " + k[1]).trim(),
-    termSort(k) { return [GRM.toFloat(k[0], 9999), GR_TORDER[k[1]] || 9, k[1]]; },
-    cmpTerm(a, b) { const x = GRM.termSort(a), y = GRM.termSort(b); for (let i = 0; i < 3; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return 0; },
-    category: (r) => [r[GC.major], r[GC.middle], r[GC.minor]].filter(Boolean).join(" / "),
-    // services/grades.py の gpa_of と同一：単位×10 を整数化して計算、小数第3位で四捨五入
-    gpa(rows) {
-      let pts = 0, cred = 0;
-      for (const r of rows) { const gp = GRM.gradePoint(r[GC.grade]); const c = Math.round(GRM.toFloat(r[GC.credit]) * 10); if (gp == null || c <= 0) continue; pts += gp * c; cred += c; }
-      if (!cred) return null;
-      let n = Math.floor((100 * pts) / cred); const rem = 100 * pts - n * cred; if (2 * rem >= cred) n += 1; return n / 100;
-    },
-    terms(rows) { const m = new Map(); for (const r of rows) { const k = GRM.termKey(r); m.set(GRM.termId(k), k); } return [...m.values()].sort(GRM.cmpTerm); },
-    termSummaries(rows) {
-      const out = []; let cum = []; let total = 0;
-      for (const k of GRM.terms(rows)) {
-        const id = GRM.termId(k); const inT = rows.filter((r) => GRM.termId(GRM.termKey(r)) === id); cum = cum.concat(inT);
-        const reg = inT.reduce((s, r) => s + GRM.toFloat(r[GC.credit]), 0);
-        const earned = inT.filter(GRM.passed).reduce((s, r) => s + GRM.toFloat(r[GC.credit]), 0); total += earned;
-        out.push({ key: k, label: GRM.termLabel(k), courses: inT.length, registered: reg, earned, gpa: GRM.gpa(inT), cumulative_gpa: GRM.gpa(cum), total_earned: total });
-      }
-      return out;
-    },
-    gradeCounts(rows) {
-      const m = {}; for (const r of rows) { const g = String(r[GC.grade] || "").trim() || "-"; m[g] = (m[g] || 0) + 1; }
-      const order = Object.keys(GR_POINTS);
-      return Object.entries(m).sort((a, b) => { const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0); });
-    },
-    fmt(x, d = 1) { if (x == null) return "-"; if (d === 2) return x.toFixed(2); return Number.isInteger(x) ? String(x) : x.toFixed(d); },
-    toCsv(rows) {
-      const headers = rows.length ? Object.keys(rows[0]) : [GC.subject, GC.credit, GC.year, GC.term, GC.grade, GC.pass];
-      const q = (v) => { const s = String(v == null ? "" : v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-      return "﻿" + [headers, ...rows.map((r) => headers.map((h) => r[h]))].map((l) => l.map(q).join(",")).join("\r\n") + "\r\n";
-    },
-  };
-
-  // HTML 解析（services/campusweb_client.py::parse_grades_html と同一）
-  const GP = {
-    cells: (tr) => [...tr.children].filter((c) => c.tagName === "TH" || c.tagName === "TD"),
-    header(tb) { const tr = tb.querySelector("tr"); return tr ? GP.cells(tr).map((c) => GRM.norm(c.textContent)) : []; },
-    kv(tb) { const o = {}; for (const tr of tb.querySelectorAll("tr")) { const cs = GP.cells(tr); cs.forEach((c, i) => { if (c.tagName === "TH" && cs[i + 1] && cs[i + 1].tagName === "TD") o[GRM.norm(c.textContent)] = GRM.norm(cs[i + 1].textContent); }); } return o; },
-    rows(tb) { const h = GP.header(tb); const d = []; [...tb.querySelectorAll("tr")].slice(1).forEach((tr) => { const cs = GP.cells(tr).map((c) => GRM.norm(c.textContent)); if (!cs.some(Boolean)) return; const rec = {}; h.forEach((k, i) => { rec[k] = i < cs.length ? cs[i] : ""; }); d.push(rec); }); return d; },
-    requirements(tb) {
-      const cols = GP.header(tb).slice(1); const items = [];
-      [...tb.querySelectorAll("tr")].slice(1).forEach((tr) => {
-        const cs = GP.cells(tr); if (!cs.length) return;
-        const raw = cs[0].textContent.replace(/[\r\n]/g, "").replace(/^[ \t]+/, "");
-        const indent = raw.length - raw.replace(/^　+/, "").length; const name = GRM.norm(raw); if (!name) return;
-        const values = {}; cols.forEach((k, i) => { values[k] = cs[i + 1] ? GRM.norm(cs[i + 1].textContent) : ""; });
-        items.push({ name, level: Math.floor(indent / 2), bold: !!cs[0].querySelector("b"), values });
-      });
-      return { cols, items };
-    },
-    grades(doc) {
-      const res = { student: {}, gpa: {}, rows: [], requirements: [], requirement_columns: [] };
-      for (const tb of doc.querySelectorAll("table")) {
-        if (tb.querySelector("table")) continue;
-        const h = GP.header(tb); const txt = GRM.norm(tb.textContent).slice(0, 300);
-        if (h.includes(GC.subject) && h.includes(GC.credit) && h.includes(GC.grade)) res.rows = GP.rows(tb);
-        else if (h[0] === "科目区分") { const r = GP.requirements(tb); res.requirement_columns = r.cols; res.requirements = r.items; }
-        else if (txt.includes("累計GPA") || /gpaid2$/i.test(tb.id || "")) Object.assign(res.gpa, GP.kv(tb));
-        else if (txt.includes("学籍番号") && txt.includes("氏名")) Object.assign(res.student, GP.kv(tb));
-      }
-      return res;
-    },
-  };
-
-  // ---- 跨域取 Campus Square（GM 请求：带 portal.cs 的 cookie，跟随跳转；只读）----
-  function GRNoAuth() { this.noauth = true; }
-  function grGM(url, method, data) {
-    const gm = gmXhr();
-    return new Promise((resolve, reject) => {
-      if (!gm) return reject(new Error("no GM_xmlhttpRequest"));
-      const o = {
-        method, url, anonymous: false,
-        onload: (r) => resolve({ status: r.status, finalUrl: r.finalUrl || r.responseURL || url, text: r.responseText || "" }),
-        onerror: () => reject(new Error(t("e_net"))),
-        ontimeout: () => reject(new Error(t("e_timeout"))),
-      };
-      if (method === "POST") { o.data = data; o.headers = { "Content-Type": "application/x-www-form-urlencoded" }; }
-      const ret = gm(o);
-      if (ret && typeof ret.catch === "function") ret.catch(() => {});
-    });
-  }
-  const grAtExtic = (u) => /ex-tic\.com|Shibboleth\.sso|\/webapps\/login/.test(u || "");
-  async function grFetchGrades() {
-    const r1 = await grGM(CW_DO + "?_flowId=" + GR_FLOW, "GET");
-    if (grAtExtic(r1.finalUrl)) throw new GRNoAuth();
-    const d1 = new DOMParser().parseFromString(r1.text, "text/html");
-    if (d1.querySelector("input[name=password]")) throw new GRNoAuth();
-    const keyInput = [...d1.querySelectorAll("input[name=_flowExecutionKey]")].find((i) => i.value);
-    const key = keyInput ? keyInput.value : ((r1.finalUrl.match(/_flowExecutionKey=([^&]+)/) || [])[1] || "");
-    if (!key) throw new GRNoAuth();
-    const body = "_flowExecutionKey=" + encodeURIComponent(key) + "&_eventId=display&dummy=&spanType=0";
-    const r2 = await grGM(CW_DO, "POST", body);
-    if (grAtExtic(r2.finalUrl)) throw new GRNoAuth();
-    const d2 = new DOMParser().parseFromString(r2.text, "text/html");
-    const res = GP.grades(d2);
-    if (!res.rows.length && !Object.keys(res.gpa).length) throw new Error("no grade table");
-    return res;
-  }
-  function grOpenLogin() {
-    // iOS Safari：window.open はクリックのジェスチャ内で**同期**に呼ばないと、ブロックされたり
-    // 開くのが非常に遅くなる。だから前に await を置かず、まず新しいタブを開いてから記号を立てる
-    // （ex-tic が LMS に戻さないための CS_KEY は、referrer 判定という保険もあるので少し遅れて立てても良い）。
-    // ログイン（パスワード・二段階認証）は本物のページで本人が行う。
-    window.open(CW_BASE + "/", "_blank");
-    try { gmVal.set(CS_KEY, Date.now()); } catch (e) {}
-  }
-
-  let grPanel = null;
-  const grState = { data: null, error: "", busy: false, tab: 0, term: "", sort: { col: 0, desc: true } };
-
-  function grCards(d) {
-    const credits = d.gpa["卒業認定単位数"]
-      ? d.gpa["卒業認定単位数"].replace(/　/g, " ").split("/").map((x) => GRM.fmt(GRM.toFloat(x))).join(" / ")
-      : GRM.fmt(GRM.toFloat(d.student["修得単位数"]));
-    const dist = GRM.gradeCounts(d.rows).map(([g, n]) => esc(g) + " " + n).join("&nbsp;&nbsp; ");
-    const card = (c, v, wide) => `<div class="bbgr-card${wide ? " wide" : ""}"><div class="bbgr-cap">${esc(c)}</div><div class="bbgr-val">${v}</div></div>`;
-    return `<div class="bbgr-cards">${card(t("gr_cum_gpa"), esc(d.gpa["累計GPA"] || GRM.fmt(GRM.gpa(d.rows), 2)))}${card(t("gr_credits"), esc(credits))}${card(t("gr_progress"), esc(d.gpa["進級判定"] || "-"))}${card(t("gr_dist"), dist, true)}</div>`;
-  }
-  function grCoursesTab(d) {
-    const terms = GRM.terms(d.rows).reverse();
-    const opts = [`<option value="">${esc(t("gr_all"))}</option>`].concat(terms.map((k) => `<option value="${esc(GRM.termId(k))}"${GRM.termId(k) === grState.term ? " selected" : ""}>${esc(GRM.termLabel(k))}</option>`));
-    let rows = d.rows.map((r, i) => ({ r, i })).filter(({ r }) => !grState.term || GRM.termId(GRM.termKey(r)) === grState.term);
-    const { col, desc } = grState.sort;
-    const keyOf = ({ r, i }) => {
-      if (col === 0) { const s = GRM.termSort(GRM.termKey(r)); return [s[0], s[1], s[2], -i]; }
-      if (col === 3) return [GRM.toFloat(r[GC.credit])];
-      if (col === 4) { const gp = GRM.gradePoint(r[GC.grade]); return [-(gp == null ? -1 : gp)]; }
-      return [[r[GC.subject], GRM.category(r), "", "", "", r[GC.pass]][col] || ""];
-    };
-    rows.sort((a, b) => { const x = keyOf(a), y = keyOf(b); for (let k = 0; k < x.length; k++) { if (x[k] < y[k]) return desc ? 1 : -1; if (x[k] > y[k]) return desc ? -1 : 1; } return 0; });
-    const cols = [t("gr_c_term"), t("gr_c_subject"), t("gr_c_category"), t("gr_c_credit"), t("gr_c_grade"), t("gr_c_pass")];
-    const head = cols.map((c, i) => `<th class="bbgr-so${[0, 3, 4, 5].includes(i) ? " n" : ""}${i === 2 ? " opt" : ""}" data-col="${i}">${esc(c)}${i === col ? (desc ? " ▾" : " ▴") : ""}</th>`).join("");
-    const body = rows.map(({ r }) => `<tr class="${GRM.passed(r) ? "" : "bad"}"><td class="n">${esc(GRM.termLabel(GRM.termKey(r)))}</td><td class="subj">${esc(r[GC.subject])}</td><td class="opt">${esc(GRM.category(r))}</td><td class="n">${esc(GRM.fmt(GRM.toFloat(r[GC.credit])))}</td><td class="n">${esc(r[GC.grade])}</td><td class="n">${esc(r[GC.pass])}</td></tr>`).join("");
-    const list = rows.map((x) => x.r);
-    const earned = list.filter(GRM.passed).reduce((s, r) => s + GRM.toFloat(r[GC.credit]), 0);
-    return `<div class="bbgr-bar"><select class="bbgr-termsel" aria-label="${esc(t("gr_c_term"))}">${opts.join("")}</select><span class="bbgr-sum">${list.length} · ${esc(t("gr_c_earned"))} ${esc(GRM.fmt(earned))} · GPA ${esc(GRM.fmt(GRM.gpa(list), 2))}</span></div><div class="bbgr-scroll"><table class="bbgr-tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
-  }
-  function grTermsTab(d) {
-    const cols = [t("gr_c_term"), t("gr_c_courses"), t("gr_c_registered"), t("gr_c_earned"), t("gr_c_term_gpa"), t("gr_c_cum_gpa"), t("gr_c_total")];
-    const body = GRM.termSummaries(d.rows).reverse().map((s) => `<tr><td>${esc(s.label)}</td><td class="n">${s.courses}</td><td class="n">${GRM.fmt(s.registered)}</td><td class="n">${GRM.fmt(s.earned)}</td><td class="n">${GRM.fmt(s.gpa, 2)}</td><td class="n">${GRM.fmt(s.cumulative_gpa, 2)}</td><td class="n">${GRM.fmt(s.total_earned)}</td></tr>`).join("");
-    return `<div class="bbgr-scroll"><table class="bbgr-tbl"><thead><tr>${cols.map((c, i) => `<th class="${i ? "n" : ""}">${esc(c)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div><p class="bbgr-note">${esc(t("gr_note"))}</p>`;
-  }
-  function grReqsTab(d) {
-    const cols = d.requirement_columns;
-    const label = (c) => (GR_REQKEY[c] ? t(GR_REQKEY[c]) : c);
-    const head = `<th>${esc(t("gr_req_cat"))}</th>` + cols.map((c) => `<th class="n">${esc(label(c))}</th>`).join("");
-    const body = d.requirements.map((q) => `<tr><td class="${q.bold ? "b" : ""}" style="padding-left:${8 + q.level * 16}px">${esc(q.name)}</td>` + cols.map((c) => { const v = q.values[c]; const bad = c === "不足単位" && GRM.toFloat(v) > 0; return `<td class="n${bad ? " bad" : ""}">${v ? esc(GRM.fmt(GRM.toFloat(v))) : ""}</td>`; }).join("") + "</tr>").join("");
-    return `<div class="bbgr-scroll"><table class="bbgr-tbl req"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
-  }
-
-  function buildGradesPanel() {
-    if (document.getElementById(GR_PANEL_ID)) return;
-    grStyles();
-    grPanel = document.createElement("div");
-    grPanel.id = GR_PANEL_ID;
-    mountShell(grPanel, {
-      sub: { id: "bbgr-sub" },
-      titleId: "bbgr-title",
-      closeId: "bbgr-x",
-      bodyHtml: `<div id="bbgr-view" aria-live="polite"></div>`,
-      footerHtml: `<div class="bbtool-status" id="bbgr-status" role="status"></div>
-        <div class="bbtool-actions">
-          <button class="btn sec" id="bbgr-csv" type="button"></button>
-          <button class="btn" id="bbgr-reload" type="button"></button>
-        </div>`,
-    });
-    const $ = (s) => grPanel.querySelector(s);
-    const view = $("#bbgr-view");
-
-    function render() {
-      $("#bbgr-sub").textContent = t("gr_sub");
-      $("#bbgr-title").textContent = t("gr_title");
-      $("#bbgr-status").textContent = grState.busy ? t("gr_loading") : "";
-      const reload = $("#bbgr-reload"); const csv = $("#bbgr-csv");
-      reload.textContent = grState.data ? t("gr_reload") : t("gr_load");
-      reload.disabled = grState.busy;
-      csv.textContent = t("gr_csv");
-      csv.style.display = grState.data && grState.data.rows.length ? "" : "none";
-      const d = grState.data;
-      let h = "";
-      if (grState.error) h += `<div class="bbgr-err">${esc(grState.error)}</div>`;
-      if (grState.noauth) h += `<div class="bbgr-login"><p>${esc(t("gr_login_msg"))}</p><button class="btn" id="bbgr-login" type="button">${esc(t("gr_login_btn"))}</button></div>`;
-      if (!d) { if (!grState.noauth) h += `<div class="bbgr-empty">${esc(grState.busy ? t("gr_loading") : t("gr_empty"))}</div>`; }
-      else {
-        const who = ["氏名", "学籍番号", "所属", "学年"].map((k) => d.student[k]).filter(Boolean).join(" · ");
-        if (who) h += `<p class="bbgr-who">${esc(who)}</p>`;
-        const tabs = [t("gr_tab_courses"), t("gr_tab_terms"), t("gr_tab_reqs")];
-        h += grCards(d) + `<div class="bbgr-tabs" role="tablist">${tabs.map((x, i) => `<button type="button" role="tab" data-tab="${i}" class="${i === grState.tab ? "on" : ""}">${esc(x)}</button>`).join("")}</div>`;
-        h += [grCoursesTab, grTermsTab, grReqsTab][grState.tab](d);
-      }
-      const sc = view.scrollTop;
-      view.innerHTML = h;
-      view.scrollTop = sc;
-    }
-
-    async function load() {
-      if (grState.busy) return;
-      grState.busy = true; grState.error = ""; grState.noauth = false; render();
-      try { grState.data = await grFetchGrades(); }
-      catch (e) { if (e instanceof GRNoAuth) grState.noauth = true; else grState.error = t("gr_failed", (e && e.message) ? e.message : e); }
-      grState.busy = false; render();
-    }
-    grPanel.__load = load;
-
-    view.addEventListener("click", (e) => {
-      const b = e.target.closest("[data-tab],[data-col],#bbgr-login");
-      if (!b) return;
-      if (b.id === "bbgr-login") { grOpenLogin(); return; }
-      if (b.dataset.tab != null) { grState.tab = +b.dataset.tab; render(); return; }
-      if (b.dataset.col != null) { const c = +b.dataset.col; grState.sort = grState.sort.col === c ? { col: c, desc: !grState.sort.desc } : { col: c, desc: c === 0 }; render(); }
-    });
-    view.addEventListener("change", (e) => { if (e.target.classList.contains("bbgr-termsel")) { grState.term = e.target.value; render(); } });
-    $("#bbgr-reload").addEventListener("click", load);
-    $("#bbgr-csv").addEventListener("click", () => {
-      if (!grState.data || !grState.data.rows.length) return;
-      saveBlob(new Blob([GRM.toCsv(grState.data.rows)], { type: "text/csv;charset=utf-8" }), "grades_" + (grState.data.student["学籍番号"] || "campus") + ".csv");
-    });
-
-    grPanel._open = () => { setShellOpen(grPanel, true); if (!grState.data && !grState.busy) load(); };
-    langHooks.add(render);
-    grPanel.__langHook = render;
-    render();
-  }
-  function toggleGradesPanel() {
-    buildGradesPanel();
-    if (grPanel.classList.contains("open")) setShellOpen(grPanel, false);
-    else grPanel._open();
-  }
-  function ensureGradesNavItem() { cloneNavItem(GR_NAV_ID, GR_ICON, t("gr_nav"), toggleGradesPanel); }
-  langHooks.add(() => { const g = document.querySelector(`#${GR_NAV_ID} p`); if (g) g.textContent = t("gr_nav"); });
-
-  // 成绩面板专用样式（表格 / 卡片 / 标签页；复用外壳的配色变量）
-  function grStyles() {
-    if (document.getElementById("bbgr-style")) return;
-    const s = document.createElement("style");
-    s.id = "bbgr-style";
-    s.textContent = `
-      #${GR_PANEL_ID}.bbtool-shell{--w:900px}
-      #${GR_PANEL_ID} .bbgr-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-      #${GR_PANEL_ID} .bbgr-err{padding:10px 12px;margin:0 0 14px;border:1px solid var(--danger);color:var(--danger);border-radius:2px}
-      #${GR_PANEL_ID} .bbgr-login{text-align:center;padding:20px 0}
-      #${GR_PANEL_ID} .bbgr-login p{margin:0 0 14px;color:var(--muted)}
-      #${GR_PANEL_ID} .bbgr-empty{padding:40px 0;text-align:center;color:var(--muted)}
-      #${GR_PANEL_ID} .bbgr-who{margin:0 0 14px;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      #${GR_PANEL_ID} .bbgr-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:0 0 18px}
-      #${GR_PANEL_ID} .bbgr-card.wide{grid-column:span 2}
-      #${GR_PANEL_ID} .bbgr-card{background:var(--btn2);border-radius:6px;padding:10px 14px}
-      #${GR_PANEL_ID} .bbgr-cap{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      #${GR_PANEL_ID} .bbgr-val{font-size:20px;font-weight:700;color:var(--fg);white-space:nowrap}
-      #${GR_PANEL_ID} .bbgr-card.wide .bbgr-val{white-space:normal}
-      #${GR_PANEL_ID} .bbgr-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 12px}
-      #${GR_PANEL_ID} .bbgr-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 14px;font:600 14px/1.2 var(--font);color:var(--muted);cursor:pointer}
-      #${GR_PANEL_ID} .bbgr-tabs button.on{color:var(--acc);border-bottom-color:var(--acc)}
-      #${GR_PANEL_ID}[data-theme=dark] .bbgr-tabs button.on{color:var(--link);border-bottom-color:var(--link)}
-      #${GR_PANEL_ID} .bbgr-bar{display:flex;align-items:center;gap:10px;margin:0 0 10px}
-      #${GR_PANEL_ID} .bbgr-bar .bbgr-sum{margin-left:auto;font-size:12px;color:var(--muted)}
-      #${GR_PANEL_ID} .bbgr-termsel{height:32px!important;min-height:32px!important;width:auto!important;min-width:150px;flex:0 0 auto}
-      #${GR_PANEL_ID} table.bbgr-tbl{width:100%;border-collapse:collapse;font-size:13px}
-      #${GR_PANEL_ID} table.bbgr-tbl th{text-align:left;font-weight:600;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
-      #${GR_PANEL_ID} table.bbgr-tbl th.bbgr-so{cursor:pointer;user-select:none}
-      #${GR_PANEL_ID} table.bbgr-tbl td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--fg)}
-      #${GR_PANEL_ID} table.bbgr-tbl .n{text-align:center;white-space:nowrap}
-      #${GR_PANEL_ID} table.bbgr-tbl tr.bad td,#${GR_PANEL_ID} table.bbgr-tbl td.bad{color:var(--danger)}
-      #${GR_PANEL_ID} table.bbgr-tbl td.b{font-weight:700}
-      #${GR_PANEL_ID} table.bbgr-tbl td.subj{min-width:9em}
-      #${GR_PANEL_ID} table.bbgr-tbl.req td:first-child{white-space:nowrap}
-      #${GR_PANEL_ID} .bbgr-note{margin:10px 0 0;font-size:12px;color:var(--muted)}
-      @media (max-width:640px){#${GR_PANEL_ID} .bbgr-cards{grid-template-columns:repeat(2,minmax(0,1fr))}#${GR_PANEL_ID} .bbgr-card.wide{grid-column:span 2}#${GR_PANEL_ID} table.bbgr-tbl .opt{display:none}}`;
-    (document.head || document.documentElement).appendChild(s);
-  }
-
   // ---------------------------------------------------------------- DOM 就绪
   // @run-at document-start 时 body / base_tools 都还没有；SPA 的导航也可能比脚本晚出现。
   // 等到 body 出现且（导航锚点或登录表单）就位，或最多等 30 秒，再跑各模块的初始化。
@@ -3677,7 +3127,6 @@
 
   // ================================================================ 入口分流
   // @run-at 是 document-start，body / base_tools 还没有，所以 DOM 相关的初始化放到 whenReady 之后。
-  if (ON_SITE) { whenReady(() => initSiteBridge()); return; }
   if (location.hostname === "vlib.ita.teikyo-u.ac.jp") {
     if (/\/Play\/[0-9a-fA-F]+/.test(location.pathname)) initMediasitePage();
     return;
@@ -3696,8 +3145,8 @@
       else if (!authCfg.user || !authCfg.pass) { showGear(); }
       return;
     }
-    // 应用页：四个导航项都注入，SPA 重渲染后轮询补回
-    const injectAll = () => { ensureNavItem(); ensureQuizNavItem(); ensureGradesNavItem(); injectAuthNav(); };
+    // 应用页：只保留批量下载、答题、自动登录设置三个入口。
+    const injectAll = () => { ensureNavItem(); ensureQuizNavItem(); injectAuthNav(); };
     injectAll();
     setInterval(injectAll, 1500);
     if (location.hash === SETTINGS_HASH) openAuthSettings();
